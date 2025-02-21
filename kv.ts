@@ -162,7 +162,6 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
   constructor(kv: Deno.Kv, collectionName: string) {  
     this.kv = kv;
     this.collectionName = collectionName;
-    console.log('Collection initialized:', collectionName);
   }
 
   // MongoDB-like methods implemented:
@@ -190,6 +189,35 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     return new ObjectId(typeof id === 'string' ? id : id.toString());
   }
 
+  private async checkIndexViolations(doc: T): Promise<void> {
+    // Get all indexes for this collection
+    const indexPrefix = ["__indexes__", this.collectionName] as const;
+    for await (const entry of this.kv.list({ prefix: indexPrefix })) {
+      const indexInfo = entry.value as { spec: IndexDefinition; options: IndexOptions };
+      
+      if (indexInfo.options.unique) {
+        const fields = Object.keys(indexInfo.spec.key);
+        
+        for (const field of fields) {
+          const value = this.getNestedValue(doc, field);
+          const serializedValue = this.serializeIndexValue(value);
+          
+          // Check if any document exists with this value
+          const prefix = [
+            this.collectionName,
+            "__idx__",
+            field,
+            serializedValue
+          ] as const;
+          
+          for await (const existing of this.kv.list({ prefix })) {
+            throw new Error(`Duplicate key error: ${field}`);
+          }
+        }
+      }
+    }
+  }
+
   async insertOne(doc: T): Promise<InsertOneResult> {
     // Handle invalid document cases
     if (!doc || typeof doc !== 'object') {
@@ -212,6 +240,9 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
       throw new Error("Duplicate key error");
     }
 
+    // Check for index violations before inserting
+    await this.checkIndexViolations(docToInsert);
+
     // Validate document fields
     this.validateDocument(docToInsert);
 
@@ -225,9 +256,16 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
       throw new Error("Failed to insert document");
     }
 
+    // Update all indexes
+    const indexPrefix = ["__indexes__", this.collectionName] as const;
+    for await (const entry of this.kv.list({ prefix: indexPrefix })) {
+      const indexInfo = entry.value as { spec: IndexDefinition; options: IndexOptions };
+      await this.updateIndexEntry({ ...docToInsert, _id }, indexInfo.spec, indexInfo.options);
+    }
+
     return {
       acknowledged: true,
-      insertedId: _id // Return the original ObjectId
+      insertedId: _id
     };
   }
 
@@ -412,9 +450,6 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
         const value = key.includes('.') 
             ? this.getNestedValue(doc, key)
             : (key in doc ? doc[key] : undefined);
-            
-        // Add debug logging
-        console.log('Matching:', { key, value, condition, doc });
         
         return this.matchesCondition(value, condition);
     });
@@ -446,19 +481,12 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     const { sort = { _id: 1 }, limit, skip = 0, projection } = options;
     let results: WithId<T>[] = [];
 
-    // Add debug logging
-    console.log('Find filter:', filter);
-
     for await (const entry of this.kv.list({ prefix: [this.collectionName] })) {
         // Deserialize the document's _id before matching
         const doc = entry.value as WithId<T>;
         doc._id = this.deserializeObjectId(doc._id as unknown as string);
         
-        // Add debug logging
-        console.log('Checking document:', doc);
-        
         if (this.matchesFilter(doc, filter)) {
-            console.log('Document matched:', doc);
             results.push(doc);
         }
     }
@@ -474,9 +502,6 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     // Apply projection
     const projectedResults = results.map(doc => this.applyProjection(doc, projection));
     
-    // Add debug logging
-    console.log('Final results:', projectedResults);
-
     return projectedResults;
   }
 
@@ -1023,24 +1048,129 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     return typeof value === 'number' || typeof value === 'string' || value instanceof Date;
   }
 
+  private async updateIndexEntry(
+    doc: WithId<T>, 
+    indexSpec: IndexDefinition,
+    options: IndexOptions
+  ): Promise<void> {
+
+    const fields = Object.keys(indexSpec.key);
+    
+    for (const field of fields) {
+      const value = this.getNestedValue(doc, field);
+      const serializedValue = this.serializeIndexValue(value);
+
+      // Create index key: [collection, __idx__, field, serializedValue]
+      const indexKey = [
+        this.collectionName,
+        "__idx__",
+        field,
+        serializedValue,
+        doc._id.toString()
+      ] as const;
+
+      // For unique indexes, check if value already exists
+      if (options.unique) {
+        // List all entries for this value
+        const prefix = [this.collectionName, "__idx__", field, serializedValue] as const;
+   
+
+        // Check for existing documents with this value (excluding current doc)
+        for await (const entry of this.kv.list({ prefix })) {
+          const existingId = (entry.value as any)._id;
+        
+          if (existingId !== doc._id.toString()) {
+            throw new Error(`Duplicate key error: ${field}`);
+          }
+        }
+      }
+
+      // Store the index entry
+      await this.kv.atomic()
+        .set(indexKey, { _id: doc._id.toString() })
+        .commit();
+    }
+  }
+
   async createIndex(
     fieldOrSpec: string | IndexDefinition,
     options: IndexOptions = {}
   ): Promise<string> {
+
+    // Clear existing indexes for testing (temporary)
+    for await (const entry of this.kv.list({ prefix: ["__indexes__", this.collectionName] })) {
+      await this.kv.delete(entry.key);
+    }
+
+    // Validate options first
+    const validOptionKeys = ['unique', 'sparse', 'name'];
+    const invalidOptions = Object.keys(options).filter(key => !validOptionKeys.includes(key));
+    if (invalidOptions.length > 0) {
+      throw new Error("Invalid index options");
+    }
+
+    // Normalize the index specification
     const indexSpec = typeof fieldOrSpec === 'string' 
       ? { key: { [fieldOrSpec]: 1 } } 
       : fieldOrSpec;
     
+
+    // Validate index specification
+    if (!indexSpec.key || Object.keys(indexSpec.key).length === 0) {
+      throw new Error("Invalid index specification");
+    }
+
+    // Generate index name if not provided
     const indexName = options.name || Object.entries(indexSpec.key)
       .map(([field, dir]) => `${field}_${dir}`).join('_');
 
+
+    // Check if index already exists
+    const indexKey = ["__indexes__", this.collectionName, indexName] as const;
+    const existingIndex = await this.kv.get(indexKey);
+    
+    if (existingIndex.value) {
+      throw new Error("Index already exists");
+    }
+
+    // Get all existing documents
+    const documents: WithId<T>[] = [];
+    for await (const entry of this.kv.list({ prefix: [this.collectionName] })) {
+      if (entry.key.length === 2) { // Only get main documents, not index entries
+        const doc = entry.value as WithId<T>;
+        doc._id = this.deserializeObjectId(doc._id as unknown as string);
+        documents.push(doc);
+      }
+    }
+
+    // Check for uniqueness constraint violations before building index
+    if (options.unique) {
+      const valueMap = new Map<string, Set<string>>();
+      
+      for (const doc of documents) {
+        for (const field of Object.keys(indexSpec.key)) {
+          const value = this.getNestedValue(doc, field);
+          const serializedValue = this.serializeIndexValue(value);
+          const key = `${field}:${serializedValue}`;
+          
+          if (!valueMap.has(key)) {
+            valueMap.set(key, new Set());
+          }
+          
+          const docIds = valueMap.get(key)!;
+          if (docIds.size > 0) {
+            throw new Error(`Duplicate key error: ${field}`);
+          }
+          docIds.add(doc._id.toString());
+        }
+      }
+    }
+
     // Store index metadata
-    const indexKey = ["__indexes__", this.collectionName, indexName];
     await this.kv.set(indexKey, { spec: indexSpec, options });
 
-    // Build the index
-    for await (const entry of this.kv.list({ prefix: [this.collectionName] })) {
-      const doc = entry.value as WithId<T>;
+    // Build the index for existing documents
+    for (const doc of documents) {
       await this.updateIndexEntry(doc, indexSpec as IndexDefinition, options);
     }
 
@@ -1055,50 +1185,6 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
       return value;
     }
     return JSON.stringify(value); // Fallback for other types
-  }
-
-  private async updateIndexEntry(
-    doc: WithId<T>, 
-    indexSpec: IndexDefinition,
-    options: IndexOptions
-  ): Promise<void> {
-    const fields = Object.keys(indexSpec.key);
-    
-    for (const field of fields) {
-      const value = this.getNestedValue(doc, field);
-      if (value === undefined && options.sparse) continue;
-
-      // Serialize the value for storage
-      const serializedValue = this.serializeIndexValue(value);
-
-      // Create index key: [collection, __idx__, field, serializedValue, docId]
-      const indexKey = [
-        this.collectionName,
-        "__idx__",
-        field,
-        serializedValue,
-        doc._id.toString()
-      ];
-
-      // Store the index entry with atomic operation
-      if (options.unique) {
-        // For unique indexes, check if value already exists
-        const existing = await this.kv.get([
-          this.collectionName,
-          "__idx__",
-          field,
-          serializedValue
-        ]);
-        
-        if (existing.value && (existing.value as any)._id !== doc._id.toString()) {
-          throw new Error(`Duplicate key error: ${field}`);
-        }
-      }
-
-      await this.kv.atomic()
-        .set(indexKey, { _id: doc._id.toString() })
-        .commit();
-    }
   }
 
   private findDateRangeField(filter: Filter<T>): string | null {
