@@ -1,0 +1,29 @@
+# Cursor Rules for Code Maintenance
+
+1. Every time a new feature is implemented or modified in the codebase:
+   - Update MONGODB_COMPAT.md to reflect the changes
+   - Mark newly implemented features with [x]
+   - Add any new limitations or differences from MongoDB
+
+2. When adding new features:
+   - Document the feature in MONGODB_COMPAT.md before implementation
+   - Include any MongoDB-specific behaviors that won't be implemented
+   - Note any Deno KV-specific limitations or differences
+
+3. When modifying existing features:
+   - Update the compatibility notes if behavior changes
+   - Document any new limitations or differences
+   - Update implementation status if feature support changes
+
+4. Keep the documentation in sync with:
+   - Query operators
+   - Method implementations
+   - Options support
+   - Behavioral differences
+
+5. When removing features:
+   - Update MONGODB_COMPAT.md to reflect the removal
+   - Document the reason for removal
+   - Note any alternative approaches
+
+Remember: The compatibility document serves as both a development guide and user documentation. Keep it accurate and up-to-date! 
