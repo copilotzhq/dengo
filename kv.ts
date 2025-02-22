@@ -1380,18 +1380,6 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     return JSON.stringify(value);
   }
 
-  private findDateRangeField(filter: Filter<T>): string | null {
-    for (const [field, condition] of Object.entries(filter)) {
-      if (condition && typeof condition === 'object') {
-        const ops = Object.keys(condition as object);
-        if (ops.some(op => ['$gt', '$gte', '$lt', '$lte'].includes(op))) {
-          return field;
-        }
-      }
-    }
-    return null;
-  }
-
   private applyFindOptions(
     results: WithId<T>[],
     options: FindOptions<T>
