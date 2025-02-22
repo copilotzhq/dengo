@@ -1291,11 +1291,6 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     options: IndexOptions = {}
   ): Promise<string> {
 
-    // Clear existing indexes for testing (temporary)
-    for await (const entry of this.kv.list({ prefix: ["__indexes__", this.collectionName] })) {
-      await this.kv.delete(entry.key);
-    }
-
     // Validate options first
     const validOptionKeys = ['unique', 'sparse', 'name'];
     const invalidOptions = Object.keys(options).filter(key => !validOptionKeys.includes(key));
@@ -1455,6 +1450,24 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     }
     
     return processed;
+  }
+
+  async listIndexes(): Promise<{ name: string; spec: IndexDefinition; options: IndexOptions }[]> {
+    const prefix = ["__indexes__", this.collectionName] as const;
+    const indexes: { name: string; spec: IndexDefinition; options: IndexOptions }[] = [];
+    
+    for await (const entry of this.kv.list({ prefix })) {
+      const name = entry.key[2] as string;
+      const { spec, options } = entry.value as IndexInfo;
+      indexes.push({ name, spec, options });
+    }
+    
+    return indexes;
+  }
+
+  async dropIndex(indexName: string): Promise<void> {
+    const indexKey = ["__indexes__", this.collectionName, indexName] as const;
+    await this.kv.delete(indexKey);
   }
 }
 

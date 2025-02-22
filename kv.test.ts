@@ -1,6 +1,14 @@
 import { assertEquals, assertRejects, assert } from "jsr:@std/assert";
 import { Collection, ObjectId } from "./kv.ts";
 
+interface TestDoc {
+  name: string;
+  age: number;
+  email: string;
+  status: string;
+  [key: string]: unknown;
+}
+
 Deno.test("Collection.insertOne", async (t) => {
   // Setup - create a new collection before each test
   using kv = await Deno.openKv(":memory:"); // Use in-memory database for tests
@@ -1218,8 +1226,9 @@ Deno.test("ObjectId", async (t) => {
 });
 
 Deno.test("Collection.createIndex", async (t) => {
+  const collectionName = `test_collection_${crypto.randomUUID()}`;
   using kv = await Deno.openKv(":memory:");
-  const collection = new Collection<TestDoc>(kv, "test_collection");
+  const collection = new Collection<TestDoc>(kv, collectionName);
 
   interface TestDoc {
     name: string;
@@ -1230,8 +1239,18 @@ Deno.test("Collection.createIndex", async (t) => {
     [key: string]: unknown;
   }
 
-  // Test index options validation first
+  // Add index cleanup between steps
+  const clearIndexes = async () => {
+    const indexes = await collection.listIndexes();
+    for (const index of indexes) {
+      if (index.name !== "_id_") { // Don't remove the default _id index
+        await collection.dropIndex(index.name);
+      }
+    }
+  };
+
   await t.step("index options validation", async () => {
+    await clearIndexes();
     // Invalid options should fail
     await assertRejects(
       async () => {
@@ -1253,14 +1272,14 @@ Deno.test("Collection.createIndex", async (t) => {
     assertEquals(validResult, "custom_name");
   });
 
-  // Then test basic operations
   await t.step("basic index operations", async () => {
+    await clearIndexes();
     const ascIndexName = await collection.createIndex("age");
     assertEquals(ascIndexName, "age_1");
   });
 
-  // Then test uniqueness
   await t.step("unique index enforcement", async () => {
+    await clearIndexes();
     // Create unique index on email
     await collection.createIndex("email", { unique: true });
     
@@ -1291,19 +1310,28 @@ Deno.test("Collection.createIndex", async (t) => {
 });
 
 Deno.test("Collection.find with indexes", async (t) => {
+  const collectionName = `test_collection_${crypto.randomUUID()}`;
   using kv = await Deno.openKv(":memory:");
-  const collection = new Collection<TestDoc>(kv, "test_collection");
+  const collection = new Collection<TestDoc>(kv, collectionName);
 
-  interface TestDoc {
-    name: string;
-    age: number;
-    email: string;
-    status: string;
-    [key: string]: unknown;
-  }
+  // Add index cleanup to existing data cleanup
+  const clearAll = async () => {
+    // Clear documents
+    const docs = await collection.find({});
+    for (const doc of docs) {
+      await collection.deleteOne({ _id: doc._id });
+    }
+    // Clear indexes
+    const indexes = await collection.listIndexes();
+    for (const index of indexes) {
+      if (index.name !== "_id_") {
+        await collection.dropIndex(index.name);
+      }
+    }
+  };
 
-  // Helper to insert test data
   const setupTestData = async () => {
+    await clearAll(); // Changed from clearData to clearAll
     await collection.insertMany([
       { name: "John", age: 30, email: "john@test.com", status: "active" },
       { name: "Jane", age: 25, email: "jane@test.com", status: "active" },
