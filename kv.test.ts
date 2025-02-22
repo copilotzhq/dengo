@@ -1,14 +1,23 @@
 import { assertEquals, assertRejects, assert } from "jsr:@std/assert";
-import { Collection, ObjectId } from "./kv.ts";
+import { Collection, ObjectId, Document } from "./kv.ts";
 
-interface TestDoc {
+interface BaseTestDoc extends Document {
   name: string;
-  age?: number;      // Make optional
-  email?: string;    // Make optional
-  status: string;
-  createdAt?: Date;  // Add createdAt
+  age: number;
+  email?: string;
+  status?: string | null;  // Allow null values
+  createdAt?: Date;
+  tags: string[];
+  nested?: { 
+    x: number; 
+    y?: number;
+    labels?: string[];  // Add labels field
+  };
+  counter?: number;
   [key: string]: unknown;
 }
+
+type TestDoc = BaseTestDoc;
 
 Deno.test("Collection.insertOne", async (t) => {
   // Setup - create a new collection before each test
@@ -419,14 +428,6 @@ Deno.test("Collection.findOne", async (t) => {
 Deno.test("Collection.find", async (t) => {
   using kv = await Deno.openKv(":memory:");
 
-  interface TestDoc {
-    name: string;
-    age: number;
-    tags: string[];
-    nested: { x: number };
-    [key: string]: unknown;
-  }
-
   const collection = new Collection<TestDoc>(kv, "test_collection");
 
   // Insert test documents
@@ -488,8 +489,9 @@ Deno.test("Collection.find", async (t) => {
   await t.step("nested document queries", async () => {
     const results = await collection.find({ "nested.x": { $gt: 3 } });
     assertEquals(results.length, 2);
-    assertEquals(results.length, 2);
-    assert(results.every(doc => doc.nested.x > 3));
+    assert(results.every(doc => 
+      (doc as { nested: { x: number } }).nested.x > 3
+    ));
   });
 
   await t.step("projection combinations", async () => {
@@ -518,14 +520,6 @@ Deno.test("Collection.find", async (t) => {
 
 Deno.test("Collection.countDocuments", async (t) => {
   using kv = await Deno.openKv(":memory:");
-
-  interface TestDoc {
-    name: string;
-    age: number;
-    tags: string[];
-    nested: { x: number };
-    [key: string]: unknown;
-  }
 
   const collection = new Collection<TestDoc>(kv, "test_collection");
 
@@ -592,14 +586,6 @@ Deno.test("Collection.countDocuments", async (t) => {
 Deno.test("Collection.estimatedDocumentCount", async (t) => {
   using kv = await Deno.openKv(":memory:");
 
-  interface TestDoc {
-    name: string;
-    age: number;
-    tags: string[];
-    nested: { x: number };
-    [key: string]: unknown;
-  }
-
   const collection = new Collection<TestDoc>(kv, "test_collection");
 
   await t.step("count on empty collection", async () => {
@@ -636,15 +622,6 @@ Deno.test("Collection.estimatedDocumentCount", async (t) => {
 
 Deno.test("Collection.distinct", async (t) => {
   using kv = await Deno.openKv(":memory:");
-
-  interface TestDoc {
-    name: string;
-    age: number;
-    tags: string[];
-    nested: { x: number; labels: string[] };
-    status: string | null;
-    [key: string]: unknown;
-  }
 
   const collection = new Collection<TestDoc>(kv, "test_collection");
 
@@ -715,19 +692,6 @@ Deno.test("Collection.distinct", async (t) => {
 
 Deno.test("Collection.updateOne", async (t) => {
   using kv = await Deno.openKv(":memory:");
-
-  interface TestDoc {
-    name: string;
-    age: number;
-    tags: string[];
-    nested: { 
-      x: number; 
-      y?: number;  // Make y optional since we add it later
-    };
-    counter?: number;  // Make counter optional since we add it with $inc
-    status?: string;   // Make status optional since we add it with $set
-    [key: string]: unknown;
-  }
 
   const collection = new Collection<TestDoc>(kv, "test_collection");
 
@@ -861,7 +825,7 @@ Deno.test("Collection.updateOne", async (t) => {
     );
     const updated = await collection.findOne({ _id: doc._id });
     assertEquals(updated?.status, undefined);
-    assertEquals(updated?.nested.y, undefined);
+    assertEquals((updated as { nested: { y: number | undefined } })?.nested.y, undefined);
   });
 
   await t.step("min/max operations", async () => {
@@ -886,15 +850,6 @@ Deno.test("Collection.updateOne", async (t) => {
 Deno.test("Collection.updateMany", async (t) => {
   using kv = await Deno.openKv(":memory:");
   const collection = new Collection<TestDoc>(kv, "test_collection");
-
-  interface TestDoc {
-    name: string;
-    age: number;
-    status: string;
-    tags: string[];
-    nested: { x: number };
-    [key: string]: unknown;
-  }
 
   // Helper to reset collection state
   const resetCollection = async () => {
@@ -989,14 +944,6 @@ Deno.test("Collection.deleteOne", async (t) => {
   using kv = await Deno.openKv(":memory:");
   const collection = new Collection<TestDoc>(kv, "test_collection");
 
-  interface TestDoc {
-    name: string;
-    age: number;
-    status: string;
-    tags: string[];
-    [key: string]: unknown;
-  }
-
   // Helper to reset collection state
   const resetCollection = async () => {
     // Clear existing data
@@ -1077,14 +1024,6 @@ Deno.test("Collection.deleteOne", async (t) => {
 Deno.test("Collection.deleteMany", async (t) => {
   using kv = await Deno.openKv(":memory:");
   const collection = new Collection<TestDoc>(kv, "test_collection");
-
-  interface TestDoc {
-    name: string;
-    age: number;
-    status: string;
-    tags: string[];
-    [key: string]: unknown;
-  }
 
   // Helper to reset collection state
   const resetCollection = async () => {
@@ -1231,15 +1170,6 @@ Deno.test("Collection.createIndex", async (t) => {
   using kv = await Deno.openKv(":memory:");
   const collection = new Collection<TestDoc>(kv, collectionName);
 
-  interface TestDoc {
-    name: string;
-    age: number;
-    email: string;
-    nested: { value: number };
-    tags: string[];
-    [key: string]: unknown;
-  }
-
   // Add index cleanup between steps
   const clearIndexes = async () => {
     const indexes = await collection.listIndexes();
@@ -1352,7 +1282,7 @@ Deno.test("Collection.find with indexes", async (t) => {
 
   await t.step("range query with index", async () => {
     await setupTestData();
-    await collection.createIndex("age");
+        await collection.createIndex("age");
 
     const docs = await collection.find({ 
       age: { $gte: 25, $lt: 35 } 

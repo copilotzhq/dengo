@@ -101,7 +101,7 @@ type Filter<T = any> = {
 } & LogicalOperator<T>;
 
 // Update the Document interface to use ObjectId
-interface Document {
+export interface Document {
   _id: ObjectId;
   [key: string]: unknown;
 }
@@ -160,7 +160,7 @@ interface IndexInfo {
   options: IndexOptions;
 }
 
-class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
+class Collection<T extends Document> {
   private kv: Deno.Kv;
   private collectionName: string;
 
@@ -194,8 +194,9 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     return new ObjectId(typeof id === 'string' ? id : id.toString());
   }
 
-  private async checkIndexViolations(doc: T): Promise<void> {
-    // Get all indexes for this collection
+  private async checkIndexViolations(
+    doc: Omit<T, '_id'> & { _id: string }
+  ): Promise<void> {
     const indexPrefix = ["__indexes__", this.collectionName] as const;
     for await (const entry of this.kv.list({ prefix: indexPrefix })) {
       const indexInfo = entry.value as { spec: IndexDefinition; options: IndexOptions };
@@ -207,7 +208,6 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
           const value = this.getNestedValue(doc, field);
           const serializedValue = this.serializeIndexValue(value);
           
-          // Check if any document exists with this value
           const prefix = [
             this.collectionName,
             "__idx__",
@@ -215,43 +215,46 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
             serializedValue
           ] as const;
           
+          // Check for existing documents with this value
           for await (const existing of this.kv.list({ prefix })) {
-            throw new Error(`Duplicate key error: ${field}`);
+            const existingId = (existing.value as any)._id;
+            // Only throw if it's a different document
+            if (existingId !== doc._id) {
+              throw new Error(`Duplicate key error: ${field}`);
+            }
           }
         }
       }
     }
   }
 
-  async insertOne(doc: T): Promise<InsertOneResult> {
-    // Handle invalid document cases
+  async insertOne(doc: Omit<T, '_id'> & { _id?: ObjectId }): Promise<InsertOneResult> {
     if (!doc || typeof doc !== 'object') {
       throw new Error("Invalid document");
     }
 
-    // Generate or use existing _id
-    const _id = doc._id || this.generateId();
+    const _id = doc._id || new ObjectId();
     const key = this.getKvKey(_id);
+    const docToInsert = { ...doc, _id: this.serializeObjectId(_id) };
 
-    // Create document with _id, ensuring ObjectId is properly serialized
-    const docToInsert = {
-      ...doc,
-      _id: this.serializeObjectId(_id)
-    };
-
-    // Check for existing document with same _id
+    // Check for existing document
     const existing = await this.kv.get(key);
     if (existing.value) {
       throw new Error("Duplicate key error");
     }
 
-    // Check for index violations before inserting
-    await this.checkIndexViolations(docToInsert);
+    // Update all indexes first
+    const indexPrefix = ["__indexes__", this.collectionName] as const;
+    for await (const entry of this.kv.list({ prefix: indexPrefix })) {
+      const indexInfo = entry.value as { spec: IndexDefinition; options: IndexOptions };
+      await this.updateIndexEntry(
+        { ...doc, _id } as Omit<T, '_id'> & { _id: ObjectId },
+        indexInfo.spec,
+        indexInfo.options
+      );
+    }
 
-    // Validate document fields
-    this.validateDocument(docToInsert);
-
-    // Insert document atomically
+    // Then insert the document
     const result = await this.kv.atomic()
       .check({ key, versionstamp: null })
       .set(key, docToInsert)
@@ -259,13 +262,6 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
 
     if (!result.ok) {
       throw new Error("Failed to insert document");
-    }
-
-    // Update all indexes
-    const indexPrefix = ["__indexes__", this.collectionName] as const;
-    for await (const entry of this.kv.list({ prefix: indexPrefix })) {
-      const indexInfo = entry.value as { spec: IndexDefinition; options: IndexOptions };
-      await this.updateIndexEntry({ ...docToInsert, _id }, indexInfo.spec, indexInfo.options);
     }
 
     return {
@@ -1133,7 +1129,7 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
   }
 
   async insertMany(
-    docs: T[],
+    docs: (Omit<T, '_id'> & { _id?: ObjectId })[],
     options: InsertManyOptions = {}
   ): Promise<InsertManyResult> {
     if (!Array.isArray(docs)) {
@@ -1148,34 +1144,39 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     for (let i = 0; i < docs.length; i++) {
       const doc = docs[i];
       if (!doc || typeof doc !== 'object') {
-        if (ordered) {
-          throw new Error("Invalid document");
-        }
-        writeErrors.push({ 
-          index: i, 
-          error: new Error("Invalid document") 
-        });
+        const error = new Error("Invalid document");
+        if (ordered) throw error;
+        writeErrors.push({ index: i, error });
         continue;
       }
     }
 
     // Helper function to insert a single document
-    const insertDoc = async (doc: T, index: number): Promise<ObjectId | null> => {
+    const insertDoc = async (doc: Omit<T, '_id'> & { _id?: ObjectId }, index: number): Promise<ObjectId | null> => {
       try {
-        const _id = doc._id || this.generateId();
-        const key = this.getKvKey(_id);
-        
-        // Check for existing document
-        const existing = await this.kv.get(key);
-        if (existing.value) {
-          throw new Error("Duplicate key error");
+        // Skip already invalid documents
+        if (!doc || typeof doc !== 'object') {
+          return null;
         }
 
-        // Prepare document with serialized _id
+        const _id = doc._id || new ObjectId();
+        const key = this.getKvKey(_id);
+
+        // Check for existing document with same _id
+        const existing = await this.kv.get(key);
+        if (existing.value) {
+          const error = new Error("Duplicate key error");
+          if (ordered) throw error;
+          writeErrors.push({ index, error });
+          return null;
+        }
+
         const docToInsert = {
           ...doc,
           _id: this.serializeObjectId(_id)
         };
+
+        await this.checkIndexViolations(docToInsert as Omit<T, '_id'> & { _id: string });
 
         const result = await this.kv.atomic()
           .check({ key, versionstamp: null })
@@ -1188,46 +1189,33 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
 
         return _id;
       } catch (error) {
-        if (ordered) {
-          // In ordered mode, propagate the error
-          throw error;
-        }
-        // In unordered mode, collect the error and continue
         writeErrors.push({
           index,
           error: error instanceof Error ? error : new Error(String(error))
         });
+        if (ordered) throw error;
         return null;
       }
     };
 
-    const validDocs = docs.filter((_, i) => !writeErrors.find(e => e.index === i));
-
-    if (ordered) {
-      // For ordered insertion, stop on first error
-      try {
-        for (const doc of validDocs) {
-          const index = docs.indexOf(doc);
-          const _id = await insertDoc(doc, index);
-          if (_id) {
-            insertedIds.push(_id);
-          }
+    try {
+      if (ordered) {
+        for (let i = 0; i < docs.length; i++) {
+          const _id = await insertDoc(docs[i], i);
+          if (_id) insertedIds.push(_id);
         }
-      } catch (error) {
-        // Propagate the error in ordered mode
-        throw error;
+      } else {
+        await Promise.all(
+          docs.map(async (doc, i) => {
+            const _id = await insertDoc(doc, i);
+            if (_id) insertedIds.push(_id);
+          })
+        );
       }
-    } else {
-      // For unordered insertion, try to insert all documents
-      await Promise.all(
-        validDocs.map(async (doc) => {
-          const index = docs.indexOf(doc);
-          const _id = await insertDoc(doc, index);
-          if (_id) {
-            insertedIds.push(_id);
-          }
-        })
-      );
+    } catch (error) {
+      if (ordered) {
+        throw error; // Re-throw in ordered mode
+      }
     }
 
     return {
@@ -1243,18 +1231,17 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
   }
 
   private async updateIndexEntry(
-    doc: WithId<T>, 
+    doc: Omit<T, '_id'> & { _id: ObjectId },
     indexSpec: IndexDefinition,
     options: IndexOptions
   ): Promise<void> {
-
     const fields = Object.keys(indexSpec.key);
     
     for (const field of fields) {
       const value = this.getNestedValue(doc, field);
       const serializedValue = this.serializeIndexValue(value);
 
-      // Create index key: [collection, __idx__, field, serializedValue]
+      // Create index key: [collection, __idx__, field, serializedValue, docId]
       const indexKey = [
         this.collectionName,
         "__idx__",
@@ -1265,21 +1252,17 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
 
       // For unique indexes, check if value already exists
       if (options.unique) {
-        // List all entries for this value
         const prefix = [this.collectionName, "__idx__", field, serializedValue] as const;
-   
-
-        // Check for existing documents with this value (excluding current doc)
+        
         for await (const entry of this.kv.list({ prefix })) {
           const existingId = (entry.value as any)._id;
-        
           if (existingId !== doc._id.toString()) {
             throw new Error(`Duplicate key error: ${field}`);
           }
         }
       }
 
-      // Store the index entry
+      // Store the index entry atomically
       await this.kv.atomic()
         .set(indexKey, { _id: doc._id.toString() })
         .commit();
