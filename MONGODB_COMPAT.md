@@ -4,6 +4,55 @@ This document tracks the compatibility between our Deno KV MongoDB-like API and 
 
 ## Implemented Features
 
+### Indexes
+
+#### Supported Features
+- [x] Single field indexes
+  - [x] Ascending/descending order
+  - [x] Unique constraint
+  - [x] Range queries
+  - [x] Sort operations
+- [x] Compound indexes
+  - [x] Multiple fields
+  - [x] First field exact match
+  - [x] Range queries on non-first fields
+- [x] Index Options
+  - [x] Unique indexes
+  - [x] Sparse indexes
+  - [x] Custom index names
+
+#### Limitations
+1. Performance
+   - [x] Basic index-based query optimization implemented
+   - [ ] No index intersection support
+   - [ ] No index statistics or usage analysis
+   - [ ] No automatic index cleanup on collection drop
+   - [ ] No index size monitoring
+
+2. Unsupported Index Types
+   - [ ] Text indexes
+   - [ ] Geospatial indexes
+   - [ ] Hashed indexes
+   - [ ] Wildcard indexes
+   - [ ] Partial indexes
+   - [ ] TTL indexes
+
+3. Query Restrictions
+   - [x] Single field indexes support range queries
+   - [x] Compound indexes support exact + range queries
+   - [ ] No index hints support
+   - [ ] Limited to Deno KV's lexicographical ordering
+   - [ ] No covered queries (always fetches full document)
+
+4. Behavioral Differences
+   - Indexes are stored in the same KV namespace using prefix "__idx__"
+   - Different performance characteristics from MongoDB:
+     - Range queries require serialization for proper ordering
+     - No in-memory index structures
+     - Sequential scans for non-indexed queries
+   - No background index builds
+   - No concurrent index creation
+
 ### Query Methods
 
 #### collection.findOne(filter, options)
@@ -284,11 +333,12 @@ This document tracks the compatibility between our Deno KV MongoDB-like API and 
 ## Limitations and Differences from MongoDB
 
 ### Storage and Performance
-1. No Indexes
-   - No support for custom indexes
-   - No index-based query optimization
-   - Full collection scans for all queries
-   - Limited performance on large collections
+1. Basic Index Support
+   - Support for single field and compound indexes
+   - Unique and sparse index options
+   - Limited to key-value store capabilities
+   - No index-based query optimization yet
+   - No advanced index types (text, geospatial, etc.)
 
 2. Transaction Limitations
    - Single-document atomicity only

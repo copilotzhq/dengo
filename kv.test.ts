@@ -1288,4 +1288,92 @@ Deno.test("Collection.createIndex", async (t) => {
       "Duplicate key error"
     );
   });
+});
+
+Deno.test("Collection.find with indexes", async (t) => {
+  using kv = await Deno.openKv(":memory:");
+  const collection = new Collection<TestDoc>(kv, "test_collection");
+
+  interface TestDoc {
+    name: string;
+    age: number;
+    email: string;
+    status: string;
+    [key: string]: unknown;
+  }
+
+  // Helper to insert test data
+  const setupTestData = async () => {
+    await collection.insertMany([
+      { name: "John", age: 30, email: "john@test.com", status: "active" },
+      { name: "Jane", age: 25, email: "jane@test.com", status: "active" },
+      { name: "Bob", age: 35, email: "bob@test.com", status: "inactive" },
+      { name: "Alice", age: 28, email: "alice@test.com", status: "active" }
+    ]);
+  };
+
+  await t.step("exact match with single field index", async () => {
+    await setupTestData();
+    await collection.createIndex("status");
+
+    const docs = await collection.find({ status: "active" });
+    assertEquals(docs.length, 3);
+    assert(docs.every(doc => doc.status === "active"));
+  });
+
+  await t.step("range query with index", async () => {
+    await setupTestData();
+    await collection.createIndex("age");
+
+    const docs = await collection.find({ 
+      age: { $gte: 25, $lt: 35 } 
+    });
+    assertEquals(docs.length, 3);
+    assert(docs.every(doc => doc.age >= 25 && doc.age < 35));
+  });
+
+  await t.step("compound index query", async () => {
+    await setupTestData();
+    await collection.createIndex({ 
+      key: { status: 1, age: 1 } 
+    });
+
+    const docs = await collection.find({ 
+      status: "active",
+      age: { $gte: 25 }
+    });
+    assertEquals(docs.length, 3);
+    assert(docs.every(doc => 
+      doc.status === "active" && doc.age >= 25
+    ));
+  });
+
+  await t.step("index with sort", async () => {
+    await setupTestData();
+    await collection.createIndex("age");
+
+    const docs = await collection.find(
+      { age: { $gte: 25 } },
+      { sort: { age: -1 } }
+    );
+    assertEquals(docs.length, 4);
+    assert(docs[0].age > docs[1].age); // Verify descending order
+  });
+
+  await t.step("index with projection", async () => {
+    await setupTestData();
+    await collection.createIndex("status");
+
+    const docs = await collection.find(
+      { status: "active" },
+      { projection: { name: 1, email: 1 } }
+    );
+    assertEquals(docs.length, 3);
+    assert(docs.every(doc => 
+      Object.keys(doc).length === 3 && // _id, name, email
+      doc.name !== undefined &&
+      doc.email !== undefined &&
+      doc.status === undefined
+    ));
+  });
 }); 

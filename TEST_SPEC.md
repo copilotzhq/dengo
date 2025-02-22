@@ -128,20 +128,20 @@ This document outlines the test cases needed to verify the MongoDB-like API impl
 ## Index Management Tests
 
 ### createIndex
-- [ ] Basic index operations
-  - [ ] Create single-field index (ascending/descending)
-  - [ ] Create compound index
-  - [ ] Create index with options (unique, sparse)
-  - [ ] Create index on nested field
+- [x] Basic index operations
+  - [x] Create single-field index (ascending/descending)
+  - [x] Create compound index
+  - [x] Create index with options (unique, sparse)
+  - [x] Create index on nested field
 
-- [ ] Index behavior verification
-  - [ ] Verify index improves query performance
-  - [ ] Test unique constraint enforcement
-  - [ ] Verify index updates on CRUD operations
-  - [ ] Test index with range queries
+- [x] Index behavior verification
+  - [x] Verify index improves query performance
+  - [x] Test unique constraint enforcement
+  - [x] Verify index updates on CRUD operations
+  - [x] Test index with range queries
 
-- [ ] Error cases
-  - [ ] Duplicate index creation
-  - [ ] Invalid field/options
-  - [ ] Unique constraint violations
+- [x] Error cases
+  - [x] Duplicate index creation
+  - [x] Invalid field/options
+  - [x] Unique constraint violations
 

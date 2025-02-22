@@ -155,6 +155,11 @@ interface IndexDefinition {
   options?: IndexOptions;
 }
 
+interface IndexInfo {
+  spec: IndexDefinition;
+  options: IndexOptions;
+}
+
 class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
   private kv: Deno.Kv;
   private collectionName: string;
@@ -474,35 +479,224 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     return results[0] || null;
   }
 
-  async find(
-    filter: Filter<T>,
-    options: FindOptions<T> = {}
-  ): Promise<WithId<T>[]> {
-    const { sort = { _id: 1 }, limit, skip = 0, projection } = options;
-    let results: WithId<T>[] = [];
-
-    for await (const entry of this.kv.list({ prefix: [this.collectionName] })) {
-        // Deserialize the document's _id before matching
-        const doc = entry.value as WithId<T>;
-        doc._id = this.deserializeObjectId(doc._id as unknown as string);
-        
-        if (this.matchesFilter(doc, filter)) {
-            results.push(doc);
-        }
-    }
-
-    // Sort results
-    if (sort) {
-        results = this.sortDocuments(results, sort);
-    }
-
-    // Apply skip and limit
-    results = results.slice(skip, limit ? skip + limit : undefined);
-
-    // Apply projection
-    const projectedResults = results.map(doc => this.applyProjection(doc, projection));
+  private async findUsableIndex(filter: Filter<T>): Promise<IndexInfo | null> {
+    // Get all indexes
+    const indexPrefix = ["__indexes__", this.collectionName] as const;
     
-    return projectedResults;
+    for await (const entry of this.kv.list({ prefix: indexPrefix })) {
+      const indexInfo = entry.value as IndexInfo;
+      
+      // Check if index fields match query fields
+      if (this.canUseIndexForQuery(indexInfo.spec, filter)) {
+        return indexInfo;
+      }
+    }
+    
+    return null;
+  }
+
+  private canUseIndexForQuery(indexSpec: IndexDefinition, filter: Filter<T>): boolean {
+    const indexFields = Object.keys(indexSpec.key);
+    
+    // Simple case: single field exact match or range
+    if (indexFields.length === 1) {
+      const field = indexFields[0];
+      return !!filter[field] && this.isIndexableCondition(filter[field]);
+    }
+    
+    // Compound index: first field must be exact match, others can be range
+    const [firstField, ...restFields] = indexFields;
+    if (!filter[firstField] || typeof filter[firstField] === 'object') {
+      return false;
+    }
+    
+    // Check remaining fields exist in filter
+    return restFields.every(field => filter[field]);
+  }
+
+  private isIndexableCondition(condition: unknown): boolean {
+    if (condition === null) return true;
+    
+    if (typeof condition === 'object') {
+      // Check for comparison operators
+      const ops = Object.keys(condition as object);
+      const validOps = ['$eq', '$gt', '$gte', '$lt', '$lte', '$in'];
+      return ops.every(op => validOps.includes(op));
+    }
+    
+    // Direct value comparison
+    return true;
+  }
+
+  private async findUsingIndex(
+    indexInfo: IndexInfo,
+    filter: Filter<T>,
+    options: FindOptions<T>
+  ): Promise<WithId<T>[]> {
+    const seenIds = new Set<string>();
+    const results: WithId<T>[] = [];
+    
+    const addUniqueDoc = (doc: WithId<T>) => {
+      const idStr = doc._id.toString();
+      if (!seenIds.has(idStr)) {
+        seenIds.add(idStr);
+        results.push(doc);
+      }
+    };
+
+    const indexFields = Object.keys(indexInfo.spec.key);
+    
+    if (indexFields.length === 1) {
+      const field = indexFields[0];
+      const condition = filter[field];
+
+
+      if (this.isRangeQuery(condition)) {
+        return this.findUsingIndexRange(field, condition as any, filter, options);
+      }
+      
+      const value = this.getQueryValue(condition);
+      const serializedValue = this.serializeIndexValue(value);
+
+      const prefix = [this.collectionName, "__idx__", field, serializedValue] as const;
+      
+      for await (const entry of this.kv.list({ prefix })) {
+
+        const docId = (entry.value as any)._id;
+        const doc = await this.findOne({ _id: new ObjectId(docId) } as Filter<T>);
+
+        if (doc && this.matchesFilter(doc, filter)) {
+          addUniqueDoc(doc);
+        }
+      }
+    } else {
+
+      const prefixParts = [this.collectionName, "__idx__"];
+      const firstField = indexFields[0];
+      const firstValue = filter[firstField];
+      
+      // Start with first field exact match
+      const prefix = [...prefixParts, firstField, String(this.serializeIndexValue(firstValue))] as const;
+      
+      for await (const entry of this.kv.list({ prefix })) {
+        const docId = (entry.value as any)._id;
+        const doc = await this.findOne({ _id: new ObjectId(docId) } as Filter<T>);
+        if (doc && this.matchesFilter(doc, filter)) {
+          addUniqueDoc(doc);
+        }
+      }
+    }
+
+    const finalResults = this.applyFindOptions(results, options);
+    return finalResults;
+  }
+
+  private async findUsingIndexRange(
+    field: string,
+    condition: Record<string, any>,
+    fullFilter: Filter<T>,
+    options: FindOptions<T>
+  ): Promise<WithId<T>[]> {
+    const start = condition.$gt || condition.$gte;
+    const end = condition.$lt || condition.$lte;
+    const sortDir = options.sort?.[field] === -1 ? -1 : 1;
+
+    // Always keep start < end for KV store, regardless of sort direction
+    const startValue = start ? this.serializeIndexValue(start) : '\x00';
+    const endValue = end ? this.serializeIndexValue(end) : '\xff'.repeat(20);
+
+    const startKey = [this.collectionName, "__idx__", field, startValue] as const;
+    const endKey = [this.collectionName, "__idx__", field, endValue] as const;
+
+    // For descending order, just use reverse: true, but keep start < end
+    const listOptions = {
+      start: startKey,  // Always use startKey as start
+      end: endKey,      // Always use endKey as end
+      reverse: sortDir === -1  // Use reverse for descending order
+    };
+
+    try {
+      const seenValues = new Set<string>();
+      const results: WithId<T>[] = [];
+
+      for await (const entry of this.kv.list(listOptions)) {
+        const docId = (entry.value as any)._id;
+        const doc = await this.findOne({ _id: new ObjectId(docId) } as Filter<T>);
+        
+        if (doc && this.matchesFilter(doc, fullFilter)) {
+          const value = doc[field as keyof typeof doc];
+          const valueKey = `${value}`;
+          
+          if (!seenValues.has(valueKey)) {
+            seenValues.add(valueKey);
+            results.push(doc);
+          }
+        }
+      }
+
+      return this.applyFindOptions(results, options);
+    } catch (error) {
+      console.error('Error in range query:', {
+        error,
+        listOptions,
+        startValue,
+        endValue
+      });
+      throw error;
+    }
+  }
+
+  private isRangeQuery(condition: unknown): boolean {
+    if (typeof condition !== 'object' || condition === null) return false;
+    const ops = Object.keys(condition as object);
+    return ops.some(op => ['$gt', '$gte', '$lt', '$lte'].includes(op));
+  }
+
+  private getQueryValue(condition: unknown): unknown {
+    if (condition === null || typeof condition !== 'object') {
+      return condition;
+    }
+    
+    const obj = condition as Record<string, unknown>;
+    if ('$eq' in obj) return obj.$eq;
+    if ('$in' in obj) return (obj.$in as unknown[])[0]; // Use first value for index
+    
+    return condition;
+  }
+
+  // Modify the existing find method to use indexes
+  async find(filter: Filter<T>, options: FindOptions<T> = {}): Promise<WithId<T>[]> {
+    // Check if we can use an index
+    const usableIndex = await this.findUsableIndex(filter);
+    
+    if (usableIndex) {
+      return this.findUsingIndex(usableIndex, filter, options);
+    }
+    
+    // Fall back to full collection scan
+    return this.findWithoutIndex(filter, options);
+  }
+
+  // Rename the existing find implementation
+  private async findWithoutIndex(
+    filter: Filter<T>, 
+    options: FindOptions<T>
+  ): Promise<WithId<T>[]> {
+    const results: WithId<T>[] = [];
+    const prefix = [this.collectionName];
+    
+    for await (const entry of this.kv.list({ prefix })) {
+      if (entry.key.length !== 2) continue; // Skip index entries
+      
+      const doc = entry.value as WithId<T>;
+      doc._id = this.deserializeObjectId(doc._id as unknown as string);
+      
+      if (this.matchesFilter(doc, filter)) {
+        results.push(doc);
+      }
+    }
+    
+    return this.applyFindOptions(results, options);
   }
 
   private sortDocuments(
@@ -1177,14 +1371,18 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     return indexName;
   }
 
-  private serializeIndexValue(value: unknown): string | number {
-    if (value instanceof Date) {
-      return value.getTime(); // Convert Date to timestamp for proper sorting
+  private serializeIndexValue(value: unknown): string {
+    if (typeof value === 'number') {
+      // Pad numbers with zeros for proper lexicographical ordering
+      return String(value).padStart(20, '0');
     }
-    if (typeof value === 'string' || typeof value === 'number') {
+    if (value instanceof Date) {
+      return value.getTime().toString().padStart(20, '0');
+    }
+    if (typeof value === 'string') {
       return value;
     }
-    return JSON.stringify(value); // Fallback for other types
+    return JSON.stringify(value);
   }
 
   private findDateRangeField(filter: Filter<T>): string | null {
@@ -1234,17 +1432,29 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     results: WithId<T>[],
     options: FindOptions<T>
   ): WithId<T>[] {
-    const { sort, limit, skip = 0, projection } = options;
+    // Deduplicate by field values first
+    const uniqueResults = Array.from(
+      new Map(
+        results.map(doc => [
+          JSON.stringify([doc.name, doc.email, doc.age, doc.status]),
+          doc
+        ])
+      ).values()
+    );
 
-    let processed = results;
+    let processed = uniqueResults;
     
-    if (sort) {
-      processed = this.sortDocuments(processed, sort);
+    if (options.sort) {
+      processed = this.sortDocuments(processed, options.sort);
     }
     
-    processed = processed.slice(skip, limit ? skip + limit : undefined);
+    processed = processed.slice(options.skip || 0, options.limit ? (options.skip || 0) + options.limit : undefined);
     
-    return processed.map(doc => this.applyProjection(doc, projection));
+    if (options.projection) {
+      return processed.map(doc => this.applyProjection(doc, options.projection));
+    }
+    
+    return processed;
   }
 }
 
