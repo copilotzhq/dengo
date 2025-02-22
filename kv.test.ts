@@ -3,9 +3,10 @@ import { Collection, ObjectId } from "./kv.ts";
 
 interface TestDoc {
   name: string;
-  age: number;
-  email: string;
+  age?: number;      // Make optional
+  email?: string;    // Make optional
   status: string;
+  createdAt?: Date;  // Add createdAt
   [key: string]: unknown;
 }
 
@@ -1357,7 +1358,10 @@ Deno.test("Collection.find with indexes", async (t) => {
       age: { $gte: 25, $lt: 35 } 
     });
     assertEquals(docs.length, 3);
-    assert(docs.every(doc => doc.age >= 25 && doc.age < 35));
+    assert(docs.every(doc => 
+      (doc as { age: number }).age >= 25 && 
+      (doc as { age: number }).age < 35
+    ));
   });
 
   await t.step("compound index query", async () => {
@@ -1372,7 +1376,8 @@ Deno.test("Collection.find with indexes", async (t) => {
     });
     assertEquals(docs.length, 3);
     assert(docs.every(doc => 
-      doc.status === "active" && doc.age >= 25
+      doc.status === "active" && 
+      (doc as { age: number }).age >= 25
     ));
   });
 
@@ -1385,7 +1390,8 @@ Deno.test("Collection.find with indexes", async (t) => {
       { sort: { age: -1 } }
     );
     assertEquals(docs.length, 4);
-    assert(docs[0].age > docs[1].age); // Verify descending order
+    assert((docs[0] as { age: number }).age > 
+           (docs[1] as { age: number }).age); // Verify descending order
   });
 
   await t.step("index with projection", async () => {
@@ -1403,5 +1409,48 @@ Deno.test("Collection.find with indexes", async (t) => {
       doc.email !== undefined &&
       doc.status === undefined
     ));
+  });
+
+  await t.step("date range query with index", async () => {
+    await clearAll();
+    
+    // Create dates for testing
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    
+    // Insert test documents with dates
+    await collection.insertMany([
+      { name: "Doc1", createdAt: yesterday, status: "active" },
+      { name: "Doc2", createdAt: now, status: "active" },
+      { name: "Doc3", createdAt: tomorrow, status: "active" },
+    ]);
+
+    // Create index on date field
+    await collection.createIndex("createdAt");
+
+    // Test range query
+    const docs = await collection.find({ 
+      createdAt: { 
+        $gte: yesterday,
+        $lt: tomorrow 
+      }
+    });
+
+    assertEquals(docs.length, 2);
+    assert(docs.every(doc => 
+      (doc as { createdAt: Date }).createdAt >= yesterday && 
+      (doc as { createdAt: Date }).createdAt < tomorrow
+    ));
+
+    // Test sorting by date
+    const sortedDocs = await collection.find(
+      { createdAt: { $gte: yesterday } },
+      { sort: { createdAt: -1 } }
+    );
+
+    assertEquals(sortedDocs.length, 3);
+    assert((sortedDocs[0] as { createdAt: Date }).createdAt > 
+           (sortedDocs[1] as { createdAt: Date }).createdAt);
   });
 }); 

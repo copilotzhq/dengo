@@ -1392,37 +1392,6 @@ class Collection<T extends Omit<Document, '_id'> & { _id?: ObjectId }> {
     return null;
   }
 
-  private async findUsingDateIndex(
-    field: string,
-    filter: Filter<T>,
-    options: FindOptions<T>
-  ): Promise<WithId<T>[]> {
-    const condition = filter[field] as Record<string, Date>;
-    const start = condition.$gt || condition.$gte;
-    const end = condition.$lt || condition.$lte;
-
-    const prefix = [this.collectionName, "__idx__", field] as const;
-    
-    // Create proper KvListSelector
-    const selector: Deno.KvListSelector = end 
-      ? { 
-          start: [...prefix, this.serializeIndexValue(start)],
-          end: [...prefix, this.serializeIndexValue(end)]
-        }
-      : { prefix };
-
-    const results: WithId<T>[] = [];
-    for await (const entry of this.kv.list(selector)) {
-      const docId = (entry.value as any)._id;
-      const doc = await this.findOne({ _id: new ObjectId(docId) } as Filter<T>);
-      if (doc && this.matchesFilter(doc, filter)) {
-        results.push(doc);
-      }
-    }
-
-    return this.applyFindOptions(results, options);
-  }
-
   private applyFindOptions(
     results: WithId<T>[],
     options: FindOptions<T>
