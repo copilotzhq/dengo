@@ -94,6 +94,35 @@ Dengo implements a wide range of MongoDB features:
 - **Fields**: `$set`, `$unset`, `$inc`, `$mul`, `$min`, `$max`, `$rename`
 - **Arrays**: `$push`, `$pull`, `$pullAll`, `$pop`, `$addToSet`
 
+### Collection Methods
+
+- **CRUD Operations**:
+  - `insertOne`, `insertMany`
+  - `findOne`, `find`
+  - `updateOne`, `updateMany`
+  - `deleteOne`, `deleteMany`
+  - `countDocuments`, `estimatedDocumentCount`
+  - `distinct`
+
+- **Index Management**:
+  - `createIndex`
+  - `dropIndex`
+  - `listIndexes`
+
+### Query Options
+
+- **Find Options**:
+  - `projection` - Include or exclude fields
+  - `sort` - Sort results by specified fields
+  - `skip` - Skip a specified number of documents
+  - `limit` - Limit the number of returned documents
+
+- **Update Options**:
+  - `upsert` - Insert document if no match is found
+
+- **Insert Options**:
+  - `ordered` - Control whether to continue on error
+
 ### Indexes
 
 - Single field indexes
@@ -203,5 +232,5 @@ the project grow and improve.
 ---
 
 <div align="center">
-  <sub>Built with ❤️ by the Dengo team</sub>
+  <sub>Built with ❤️ by the Copilotz team</sub>
 </div>

@@ -1,4 +1,4 @@
-import { Database, Document } from "./mod.ts";
+import { Database, type Document } from "./mod.ts";
 
 // Test data interfaces
 interface User extends Document {
@@ -13,18 +13,18 @@ interface User extends Document {
 }
 
 // Benchmark utilities
-const generateUser = (i: number): Omit<User, '_id'> => ({
+const generateUser = (i: number): Omit<User, "_id"> => ({
   name: `User ${i}`,
   email: `user${i}@example.com`,
   age: 20 + (i % 30),
   tags: [`tag${i % 5}`, `tag${i % 3}`],
   metadata: {
     lastLogin: new Date(),
-    status: i % 2 === 0 ? "active" : "inactive"
-  }
+    status: i % 2 === 0 ? "active" : "inactive",
+  },
 });
 
-const generateUsers = (count: number): Omit<User, '_id'>[] => 
+const generateUsers = (count: number): Omit<User, "_id">[] =>
   Array.from({ length: count }, (_, i) => generateUser(i));
 
 // Setup database and collection
@@ -79,7 +79,7 @@ Deno.bench("createIndex - compound", async () => {
   const { kv, users } = await setupCollection();
   try {
     await users.createIndex({
-      key: { age: 1, "metadata.status": 1 }
+      key: { age: 1, "metadata.status": 1 },
     });
   } finally {
     kv.close();
@@ -125,10 +125,10 @@ Deno.bench("complex query with index", async () => {
     await users.insertMany(generateUsers(100));
     await users.find({
       age: { $gte: 25, $lte: 35 },
-      "metadata.status": "active"
+      "metadata.status": "active",
     }, {
       sort: { age: -1 },
-      limit: 10
+      limit: 10,
     });
   } finally {
     kv.close();
@@ -142,7 +142,7 @@ Deno.bench("updateOne - simple update", async () => {
     const doc = await users.insertOne(generateUser(1));
     await users.updateOne(
       { _id: doc.insertedId },
-      { $set: { age: 40 } }
+      { $set: { age: 40 } },
     );
   } finally {
     kv.close();
@@ -155,7 +155,7 @@ Deno.bench("updateMany - batch update", async () => {
     await users.insertMany(generateUsers(100));
     await users.updateMany(
       { "metadata.status": "inactive" },
-      { $set: { "metadata.status": "active" } }
+      { $set: { "metadata.status": "active" } },
     );
   } finally {
     kv.close();
@@ -203,4 +203,4 @@ Deno.bench("query - with index", async () => {
   } finally {
     kv.close();
   }
-}); 
+});
