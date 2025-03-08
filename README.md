@@ -26,7 +26,7 @@
 
 ```bash
 # Import from JSR
-import { Database, Document, ObjectId } from "@copilotz/denog";
+import { Database, Document, ObjectId } from "@copilotz/dengo";
 
 # Or import directly from GitHub
 import { Database, Document, ObjectId } from "https://raw.githubusercontent.com/copilotzhq/dengo/main/mod.ts";
