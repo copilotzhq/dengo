@@ -5,9 +5,8 @@
   <h3>MongoDB-compatible API for Deno KV</h3>
   <p>The power of MongoDB queries with the simplicity of Deno's native KV store</p>
 
-[![JSR](https://jsr.io/badges/@dengo/core)](https://jsr.io/@dengo/core)
-[![GitHub stars](https://img.shields.io/github/stars/username/dengo?style=social)](https://github.com/username/dengo)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/username/dengo/ci.yml?branch=main)](https://github.com/username/dengo/actions)
+[![JSR](https://jsr.io/badges/@copilotz/dengo)](https://jsr.io/@copilotz/dengo)
+[![GitHub stars](https://img.shields.io/github/stars/copiotzhq/dengo?style=social)](https://github.com/username/dengo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 </div>
@@ -170,22 +169,7 @@ Check out our [examples directory](./examples) for more complete examples.
 
 ## 📊 Performance
 
-Dengo is designed to be efficient while providing MongoDB-like query
-capabilities:
-
-- Uses Deno KV's atomic operations for consistency
-- Creates indexes for frequently queried fields
-- Minimizes memory usage during query operations
-- Optimizes range queries with efficient serialization
-
-Benchmark results compared to other Deno database solutions:
-
-| Operation        | Dengo | SQLite | MongoDB Driver |
-| ---------------- | ----- | ------ | -------------- |
-| Insert 1000 docs | 450ms | 380ms  | 620ms          |
-| Simple query     | 15ms  | 12ms   | 35ms           |
-| Complex query    | 45ms  | 120ms  | 30ms           |
-| Index lookup     | 8ms   | 10ms   | 12ms           |
+TO DO: Compare between Dengo and MongoDB
 
 ## 🤝 Contributing
 
@@ -209,7 +193,7 @@ for details.
 If you find Dengo useful, please consider giving it a star on GitHub! It helps
 the project grow and improve.
 
-[![GitHub stars](https://img.shields.io/github/stars/username/dengo?style=social)](https://github.com/username/dengo)
+[![GitHub stars](https://img.shields.io/github/stars/copilotzhq/dengo?style=social)](https://github.com/copilotzhq/dengo)
 
 ## 🙏 Acknowledgements
 
