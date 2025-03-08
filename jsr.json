@@ -1,6 +1,6 @@
 {
   "name": "@copilotz/dengo",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "exports": "mod.ts",
   "unstable": ["kv"],
   "fmt": {

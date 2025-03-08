@@ -6,7 +6,7 @@
   <p>The power of MongoDB queries with the simplicity of Deno's native KV store</p>
 
 [![JSR](https://jsr.io/badges/@copilotz/dengo)](https://jsr.io/@copilotz/dengo)
-[![GitHub stars](https://img.shields.io/github/stars/copiotzhq/dengo?style=social)](https://github.com/username/dengo)
+[![GitHub stars](https://img.shields.io/github/stars/copiotzhq/dengo?style=social)](https://github.com/copilotzhq/dengo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 </div>
@@ -26,10 +26,10 @@
 
 ```bash
 # Import from JSR
-import { Database } from "@dengo/core";
+import { Database } from "@copilotz/denog";
 
 # Or import directly from GitHub
-import { Database } from "https://raw.githubusercontent.com/username/dengo/main/mod.ts";
+import { Database } from "https://raw.githubusercontent.com/copilotzhq/dengo/main/mod.ts";
 ```
 
 ## 🚀 Quick Start
