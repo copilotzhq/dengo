@@ -26,10 +26,10 @@
 
 ```bash
 # Import from JSR
-import { Database } from "@copilotz/denog";
+import { Database, Document, ObjectId } from "@copilotz/denog";
 
 # Or import directly from GitHub
-import { Database } from "https://raw.githubusercontent.com/copilotzhq/dengo/main/mod.ts";
+import { Database, Document, ObjectId } from "https://raw.githubusercontent.com/copilotzhq/dengo/main/mod.ts";
 ```
 
 ## 🚀 Quick Start
@@ -39,8 +39,7 @@ import { Database } from "https://raw.githubusercontent.com/copilotzhq/dengo/mai
 const db = new Database(await Deno.openKv());
 
 // Define your document type (optional but recommended)
-interface User {
-  _id: ObjectId;
+interface User extends Document {
   name: string;
   email: string;
   age: number;
