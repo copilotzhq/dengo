@@ -3,7 +3,8 @@
   "specifiers": {
     "jsr:@std/assert@*": "1.0.11",
     "jsr:@std/internal@^1.0.5": "1.0.5",
-    "npm:bson@*": "6.10.2"
+    "npm:bson@*": "6.10.2",
+    "npm:bson@6.10.2": "6.10.2"
   },
   "jsr": {
     "@std/assert@1.0.11": {
@@ -20,5 +21,10 @@
     "bson@6.10.2": {
       "integrity": "sha512-5afhLTjqDSA3akH56E+/2J6kTDuSIlBxyXPdQslj9hcIgOUE378xdOfZvC/9q3LifJNI6KR/juZ+d0NRNYBwXg=="
     }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:bson@6.10.2"
+    ]
   }
 }

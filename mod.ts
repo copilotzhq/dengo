@@ -1,96 +1,254 @@
+/**
+ * Dengo: MongoDB-compatible API for Deno KV
+ *
+ * This module provides a MongoDB-compatible database layer for Deno's built-in KV store.
+ * It allows developers to use familiar MongoDB query syntax while leveraging Deno's native
+ * key-value storage capabilities.
+ *
+ * @example
+ * ```ts
+ * import { Database, ObjectId } from "@copilotz/dengo";
+ *
+ * // Initialize the database with Deno KV
+ * const db = new Database(await Deno.openKv());
+ *
+ * // Define your document type
+ * interface User {
+ *   _id: ObjectId;
+ *   name: string;
+ *   email: string;
+ *   age: number;
+ *   tags: string[];
+ * }
+ *
+ * // Get a typed collection
+ * const users = db.collection<User>("users");
+ *
+ * // Insert a document
+ * await users.insertOne({
+ *   name: "John Doe",
+ *   email: "john@example.com",
+ *   age: 30,
+ *   tags: ["developer", "deno"]
+ * });
+ *
+ * // Find documents with MongoDB query syntax
+ * const result = await users.find({
+ *   age: { $gt: 25 },
+ *   tags: "developer"
+ * });
+ * ```
+ *
+ * @module
+ */
+
 import { ObjectId } from "bson";
 
 type SortDirection = 1 | -1;
 
+/**
+ * Represents the result of an update operation.
+ *
+ * @template T The document type that was updated
+ */
 interface UpdateResult<T> {
+  /** Number of documents that matched the filter */
   matchedCount: number;
+  /** Number of documents that were modified */
   modifiedCount: number;
+  /** The ID of the document that was upserted, or null if no upsert occurred */
   upsertedId: ObjectId | null;
+  /** Number of documents that were upserted (0 or 1) */
   upsertedCount: number;
+  /** Whether the operation was acknowledged */
   acknowledged: boolean;
+  /** Whether the operation encountered write errors */
   hasWriteErrors?: boolean;
+  /** Details of any write errors that occurred */
   writeErrors?: { index: number; error: Error }[];
 }
 
 type KvKeyPart = string | number | Uint8Array;
 type KvKey = readonly [string, KvKeyPart, ...KvKeyPart[]];
 
-interface FindOptions {
-  sort?: Record<string, 1 | -1>;
+/**
+ * Options for find operations.
+ *
+ * @template T The document type being queried
+ */
+interface FindOptions<T = Document> {
+  /** Sorting criteria (field name to sort direction mapping) */
+  sort?: Record<string, SortDirection>;
+  /** Maximum number of documents to return */
   limit?: number;
+  /** Number of documents to skip */
   skip?: number;
+  /** Fields to include or exclude in the result */
   projection?: Record<string, 0 | 1 | boolean>;
 }
 
+/**
+ * Options for insertMany operations.
+ */
 interface InsertManyOptions {
+  /**
+   * Whether to stop processing on the first error.
+   * If false, continues inserting remaining documents even if some fail.
+   */
   ordered?: boolean;
 }
 
+/**
+ * Result of an insertMany operation.
+ */
 interface InsertManyResult {
+  /** Number of documents that were inserted */
   insertedCount: number;
+  /** Array of IDs for the inserted documents */
   insertedIds: ObjectId[];
+  /** Whether the operation encountered write errors */
   hasWriteErrors: boolean;
+  /** Details of any write errors that occurred */
   writeErrors?: { index: number; error: Error }[];
 }
 
+/**
+ * Result of an insertOne operation.
+ */
 interface InsertOneResult {
+  /** Whether the operation was acknowledged */
   acknowledged: boolean;
+  /** The ID of the inserted document */
   insertedId: ObjectId;
 }
 
+/**
+ * Options for delete operations.
+ */
 interface DeleteOptions {
   // Future options like collation, hint can be added here
 }
 
+/**
+ * Result of a delete operation.
+ */
 interface DeleteResult {
+  /** Whether the operation was acknowledged */
   acknowledged: boolean;
+  /** Number of documents that were deleted */
   deletedCount: number;
 }
 
+/**
+ * Options for count operations.
+ */
 interface CountOptions {
+  /** Maximum number of documents to count */
   limit?: number;
+  /** Number of documents to skip */
   skip?: number;
   // Future options like hint, maxTimeMS can be added here
 }
 
+/**
+ * Options for distinct operations.
+ */
 interface DistinctOptions {
   // Future options like maxTimeMS, collation can be added here
 }
 
-// Comparison operator types
+/**
+ * Comparison operators for query filters.
+ *
+ * @template T The type of the field being compared
+ */
 type ComparisonOperator<T> = {
+  /** Matches values equal to the specified value */
   $eq?: T;
+  /** Matches values greater than the specified value */
   $gt?: T;
+  /** Matches values greater than or equal to the specified value */
   $gte?: T;
+  /** Matches values less than the specified value */
   $lt?: T;
+  /** Matches values less than or equal to the specified value */
   $lte?: T;
+  /** Matches values not equal to the specified value */
   $ne?: T;
+  /** Matches values in the specified array */
   $in?: T[];
+  /** Matches values not in the specified array */
   $nin?: T[];
 };
 
-// Logical operator types
+/**
+ * Logical operators for query filters.
+ *
+ * @template T The document type being filtered
+ */
 type LogicalOperator<T> = {
+  /** Joins query clauses with a logical AND */
   $and?: Filter<T>[];
+  /** Joins query clauses with a logical OR */
   $or?: Filter<T>[];
+  /** Joins query clauses with a logical NOR */
   $nor?: Filter<T>[];
+  /** Inverts the effect of a query expression */
   $not?: Filter<T>;
 };
 
-// Array operator types
+/**
+ * Array operators for query filters.
+ *
+ * @template T The type of the array field
+ */
 type ArrayOperator<T> = {
+  /** Matches arrays that contain all specified elements */
   $all?: T[];
+  /** Matches arrays that contain at least one element matching all the specified conditions */
   $elemMatch?: Filter<T>;
+  /** Matches arrays with the specified number of elements */
   $size?: number;
 };
 
-// Element operator types
+/**
+ * Element operators for query filters.
+ */
 type ElementOperator = {
+  /** Matches documents that have the specified field */
   $exists?: boolean;
+  /** Matches documents where the value of a field is of the specified type */
   $type?: string;
 };
 
-// Filter type
+/**
+ * Represents a MongoDB-style query filter.
+ *
+ * Filters can include direct field comparisons, comparison operators,
+ * array operators, element operators, and logical operators.
+ *
+ * @example
+ * ```ts
+ * // Simple equality filter
+ * const filter: Filter<User> = { name: "John" };
+ *
+ * // Comparison operator
+ * const filter: Filter<User> = { age: { $gt: 25 } };
+ *
+ * // Logical operator
+ * const filter: Filter<User> = {
+ *   $or: [
+ *     { name: "John" },
+ *     { name: "Jane" }
+ *   ]
+ * };
+ *
+ * // Array operator
+ * const filter: Filter<User> = { tags: { $all: ["developer", "deno"] } };
+ * ```
+ *
+ * @template T The document type to filter
+ */
 type Filter<T = any> =
   & {
     [P in keyof T & string]?:
@@ -101,7 +259,21 @@ type Filter<T = any> =
   }
   & LogicalOperator<T>;
 
-// Update the Document interface to use ObjectId
+/**
+ * Represents a document stored in a collection.
+ *
+ * All documents must have an `_id` field of type ObjectId.
+ * Additional fields can be of any type and are defined by the generic type parameter.
+ *
+ * @example
+ * ```ts
+ * interface User extends Document {
+ *   name: string;
+ *   email: string;
+ *   age: number;
+ * }
+ * ```
+ */
 export interface Document {
   _id: ObjectId;
   [key: string]: unknown;
@@ -115,51 +287,126 @@ interface FindOptions<T = Document> {
   projection?: Record<string, 0 | 1 | boolean>;
 }
 
-// UpdateOperator type
+/**
+ * Update operators for modifying documents.
+ *
+ * @template T The document type being updated
+ */
 type UpdateOperator<T> = {
+  /** Sets the value of specified fields */
   $set?: Partial<T>;
+  /** Removes specified fields */
   $unset?: Partial<Record<string, true>>;
+  /** Increments the value of numeric fields */
   $inc?: Partial<Record<string, number>>;
+  /** Multiplies the value of numeric fields */
   $mul?: Partial<Record<string, number>>;
+  /** Updates fields with specified value if it's less than the current value */
   $min?: Partial<Record<string, number | Date>>;
+  /** Updates fields with specified value if it's greater than the current value */
   $max?: Partial<Record<string, number | Date>>;
+  /** Adds elements to array fields */
   $push?: Partial<Record<string, unknown>>;
+  /** Removes elements from array fields that match a condition */
   $pull?: Partial<Record<string, unknown>>;
+  /** Adds elements to array fields only if they don't already exist */
   $addToSet?: Partial<Record<string, unknown>>;
 };
 
-// Update options with type safety
+/**
+ * Options for update operations.
+ *
+ * @template T The document type being updated
+ */
 interface UpdateOptions<T> {
+  /**
+   * Whether to insert a document if no documents match the filter.
+   * Default is false.
+   */
   upsert?: boolean;
+  /**
+   * Array filters for updating elements in arrays.
+   * Used with positional operators in update expressions.
+   */
   arrayFilters?: ArrayFilter<T>[];
+  /**
+   * Whether to stop processing on the first error.
+   * If false, continues updating remaining documents even if some fail.
+   */
   ordered?: boolean;
 }
 
-// Array filter type
+/**
+ * Type for array filters used in update operations.
+ *
+ * @template T The document type being updated
+ */
 type ArrayFilter<T> = {
   [key: string]: Filter<T>;
 };
 
-// Add type for stored documents (with required _id)
+/**
+ * Type that adds an _id field to a document type.
+ *
+ * @template T The document type
+ */
 type WithId<T> = T & { _id: ObjectId };
 
-// Move these outside the class
+/**
+ * Options for index creation.
+ */
 interface IndexOptions {
+  /** Whether the index should enforce uniqueness */
   unique?: boolean;
+  /** Whether the index should only include documents that contain the indexed field */
   sparse?: boolean;
+  /** Custom name for the index */
   name?: string;
 }
 
+/**
+ * Definition of an index to be created.
+ *
+ * @example
+ * ```ts
+ * // Simple ascending index on a single field
+ * const indexDef: IndexDefinition = { key: { email: 1 } };
+ *
+ * // Compound index with descending order on age and ascending on name
+ * const compoundIndex: IndexDefinition = {
+ *   key: { age: -1, name: 1 },
+ *   options: { unique: true }
+ * };
+ * ```
+ */
 interface IndexDefinition {
+  /**
+   * Fields to index and their sort direction.
+   * Use 1 for ascending order, -1 for descending order.
+   */
   key: Record<string, 1 | -1>;
+  /** Additional options for the index */
   options?: IndexOptions;
 }
 
+/**
+ * Information about an existing index.
+ */
 interface IndexInfo {
+  /** The index definition */
   spec: IndexDefinition;
+  /** Options that were used when creating the index */
   options: IndexOptions;
 }
 
+/**
+ * Represents a collection of documents in the database.
+ *
+ * A collection is a group of documents that share a common structure,
+ * similar to a table in a relational database.
+ *
+ * @template T The document type stored in this collection
+ */
 class Collection<T extends Document> {
   private kv: Deno.Kv;
   private collectionName: string;
@@ -231,6 +478,25 @@ class Collection<T extends Document> {
     }
   }
 
+  /**
+   * Inserts a single document into the collection.
+   *
+   * If the document doesn't have an `_id` field, one will be generated automatically.
+   *
+   * @example
+   * ```ts
+   * const result = await users.insertOne({
+   *   name: "John Doe",
+   *   email: "john@example.com",
+   *   age: 30
+   * });
+   * console.log(result.insertedId); // ObjectId("...")
+   * ```
+   *
+   * @param doc The document to insert
+   * @returns A promise that resolves to an InsertOneResult
+   * @throws If a document with the same _id already exists
+   */
   async insertOne(
     doc: Omit<T, "_id"> & { _id?: ObjectId },
   ): Promise<InsertOneResult> {
@@ -608,6 +874,21 @@ class Collection<T extends Document> {
     return a === b;
   }
 
+  /**
+   * Finds a single document that matches the filter.
+   *
+   * @example
+   * ```ts
+   * const user = await users.findOne({ email: "john@example.com" });
+   * if (user) {
+   *   console.log(user.name); // "John Doe"
+   * }
+   * ```
+   *
+   * @param filter The query filter
+   * @param options Options for the find operation
+   * @returns A promise that resolves to the matching document, or null if none is found
+   */
   async findOne(
     filter: Filter<T>,
     options: FindOptions<T> = {},
@@ -865,7 +1146,21 @@ class Collection<T extends Document> {
     return condition;
   }
 
-  // Modify the existing find method to use indexes
+  /**
+   * Finds all documents that match the filter.
+   *
+   * @example
+   * ```ts
+   * const youngUsers = await users.find(
+   *   { age: { $lt: 30 } },
+   *   { sort: { name: 1 }, limit: 10 }
+   * );
+   * ```
+   *
+   * @param filter The query filter
+   * @param options Options for the find operation
+   * @returns A promise that resolves to an array of matching documents
+   */
   async find(
     filter: Filter<T>,
     options: FindOptions<T> = {},
@@ -970,6 +1265,23 @@ class Collection<T extends Document> {
     }, obj);
   }
 
+  /**
+   * Updates a single document that matches the filter.
+   *
+   * @example
+   * ```ts
+   * const result = await users.updateOne(
+   *   { email: "john@example.com" },
+   *   { $set: { age: 31 }, $push: { tags: "updated" } }
+   * );
+   * console.log(result.modifiedCount); // 1
+   * ```
+   *
+   * @param filter The query filter
+   * @param update The update operations to apply
+   * @param options Options for the update operation
+   * @returns A promise that resolves to an UpdateResult
+   */
   async updateOne(
     filter: Filter<T>,
     update: UpdateOperator<T>,
@@ -1131,6 +1443,23 @@ class Collection<T extends Document> {
     return result;
   }
 
+  /**
+   * Updates all documents that match the filter.
+   *
+   * @example
+   * ```ts
+   * const result = await users.updateMany(
+   *   { age: { $lt: 30 } },
+   *   { $set: { status: "young" } }
+   * );
+   * console.log(result.modifiedCount); // Number of documents updated
+   * ```
+   *
+   * @param filter The query filter
+   * @param update The update operations to apply
+   * @param options Options for the update operation
+   * @returns A promise that resolves to an UpdateResult
+   */
   async updateMany(
     filter: Filter<T>,
     update: UpdateOperator<T>,
@@ -1182,6 +1511,18 @@ class Collection<T extends Document> {
     };
   }
 
+  /**
+   * Deletes a single document that matches the filter.
+   *
+   * @example
+   * ```ts
+   * const result = await users.deleteOne({ email: "john@example.com" });
+   * console.log(result.deletedCount); // 1
+   * ```
+   *
+   * @param filter The query filter
+   * @returns A promise that resolves to a DeleteResult
+   */
   async deleteOne(filter: Filter<T>): Promise<DeleteResult> {
     const doc = await this.findOne(filter);
 
@@ -1212,6 +1553,18 @@ class Collection<T extends Document> {
     };
   }
 
+  /**
+   * Deletes all documents that match the filter.
+   *
+   * @example
+   * ```ts
+   * const result = await users.deleteMany({ age: { $lt: 18 } });
+   * console.log(result.deletedCount); // Number of documents deleted
+   * ```
+   *
+   * @param filter The query filter
+   * @returns A promise that resolves to a DeleteResult
+   */
   async deleteMany(filter: Filter<T>): Promise<DeleteResult> {
     const docs = await this.find(filter);
 
@@ -1519,6 +1872,25 @@ class Collection<T extends Document> {
     }
   }
 
+  /**
+   * Creates an index on the specified field(s).
+   *
+   * @example
+   * ```ts
+   * // Create a simple index
+   * await users.createIndex("email");
+   *
+   * // Create a unique index
+   * await users.createIndex({ key: { email: 1 }, options: { unique: true } });
+   *
+   * // Create a compound index
+   * await users.createIndex({ key: { age: -1, name: 1 } });
+   * ```
+   *
+   * @param fieldOrSpec The field name or index specification
+   * @param options Options for the index
+   * @returns A promise that resolves to the name of the created index
+   */
   async createIndex(
     fieldOrSpec: string | IndexDefinition,
     options: IndexOptions = {},
@@ -1533,9 +1905,7 @@ class Collection<T extends Document> {
     }
 
     // Normalize the index specification
-    const indexSpec = typeof fieldOrSpec === "string"
-      ? { key: { [fieldOrSpec]: 1 } }
-      : fieldOrSpec;
+    const indexSpec = this.normalizeIndexSpec(fieldOrSpec);
 
     // Validate index specification
     if (!indexSpec.key || Object.keys(indexSpec.key).length === 0) {
@@ -1674,15 +2044,45 @@ class Collection<T extends Document> {
     const indexKey = ["__indexes__", this.collectionName, indexName] as const;
     await this.kv.delete(indexKey);
   }
+
+  private normalizeIndexSpec(
+    fieldOrSpec: string | IndexDefinition,
+  ): IndexDefinition {
+    // Normalize the index specification
+    return typeof fieldOrSpec === "string"
+      ? { key: { [fieldOrSpec]: 1 } }
+      : fieldOrSpec;
+  }
 }
 
+/**
+ * The main database class that provides access to collections.
+ *
+ * @example
+ * ```ts
+ * const db = new Database(await Deno.openKv());
+ * const users = db.collection<User>("users");
+ * ```
+ */
 class Database {
   private kv: Deno.Kv;
 
+  /**
+   * Creates a new Database instance.
+   *
+   * @param kv The Deno.Kv instance to use for storage
+   */
   constructor(kv: Deno.Kv) {
     this.kv = kv;
   }
 
+  /**
+   * Gets a collection with the specified name.
+   *
+   * @template T The document type stored in the collection
+   * @param name The name of the collection
+   * @returns A Collection instance for the specified name
+   */
   collection<T extends Document>(name: string): Collection<T> {
     return new Collection<T>(this.kv, name);
   }

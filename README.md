@@ -199,7 +199,7 @@ the project grow and improve.
 
 - The Deno team for creating an amazing runtime
 - MongoDB for their excellent query API design
-- All our contributors and users
+- All our contributors and testers and future users
 
 ---
 
