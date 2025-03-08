@@ -62,6 +62,7 @@ This document tracks the compatibility between our Deno KV MongoDB-like API and 
   - Logical operators
   - Array operators
   - Element operators
+  - Nested field queries with dot notation
 - [x] Options
   - [x] `projection` - Field inclusion/exclusion
     - Supports inclusion mode (`{ field: 1 }`)
@@ -205,34 +206,48 @@ This document tracks the compatibility between our Deno KV MongoDB-like API and 
 
 ### Query Operators
 
-#### Comparison
-- [x] `$eq` - Matches values that are equal to a specified value
-- [x] `$gt` - Matches values that are greater than a specified value
-- [x] `$gte` - Matches values that are greater than or equal to a specified value
-- [x] `$lt` - Matches values that are less than a specified value
-- [x] `$lte` - Matches values that are less than or equal to a specified value
-- [x] `$in` - Matches any of the values specified in an array
-- [x] `$ne` - Matches values that are not equal to a specified value
-- [x] `$nin` - Matches none of the values specified in an array
+#### Comparison Operators
+- [x] `$eq` - Equal to
+- [x] `$gt` - Greater than
+- [x] `$gte` - Greater than or equal to
+- [x] `$lt` - Less than
+- [x] `$lte` - Less than or equal to
+- [x] `$in` - In array
+  - **Note**: When using `$in` with multiple ObjectIds, make sure to use the `toString()` method for comparison
+- [x] `$ne` - Not equal to
+- [x] `$nin` - Not in array
 
 #### Logical
 - [x] `$and` - Joins query clauses with a logical AND
+  - Improved implementation with proper array handling
+  - Supports nested conditions and complex filters
 - [x] `$or` - Joins query clauses with a logical OR
+  - Enhanced to properly handle array fields and nested objects
+  - Supports complex combinations of filters
 - [x] `$not` - Inverts the effect of a query expression
+  - Full support for negating any query expression
 - [x] `$nor` - Joins query clauses with a logical NOR
+  - Complete implementation with proper array handling
 
 #### Array
 - [x] `$all` - Matches arrays that contain all elements
+  - Improved implementation for better performance
+  - Correctly handles nested arrays and complex objects
 - [x] `$elemMatch` - Matches documents that contain an array element matching all conditions
+  - Enhanced to support complex nested conditions
+  - Works with all comparison and logical operators
 - [x] `$size` - Matches arrays with specific size
+  - Accurate array length matching
 
 #### Element
 - [x] `$exists`
   - Implemented with consistent ordering when multiple documents match
   - Always includes `_id` sort when no explicit sort is provided
   - For consistent results, combine with other filters to ensure unique matches
+  - Improved handling of nested fields and arrays
 - [x] `$type` - Matches documents where field is of specified type
   - Supports both string types and MongoDB numeric BSON types
+  - Enhanced type detection for arrays, dates, and ObjectIds
   - Limited BSON type support compared to MongoDB
 
 ### Update Operators
@@ -320,101 +335,34 @@ This document tracks the compatibility between our Deno KV MongoDB-like API and 
    - `numericOrdering` - Numeric ordering
    - `alternate` - Alternate handling
    - `maxVariable` - Max variable
-   - `backwards` - Backwards ordering
+   - `backwards`
 
-3. Index Hints
-   - Named index hints
-   - Index specification hints
+### Nested Field and Array Handling
 
-4. Array Filters
-   - Positional filtered updates
-   - Array element matching
+#### Nested Field Access
+- [x] Dot notation for nested fields
+  - Supports deep nesting (e.g., `"user.address.city"`)
+  - Works with all query operators
+  - Handles missing intermediate fields gracefully
 
-## Limitations and Differences from MongoDB
+#### Array Field Queries
+- [x] Direct array element matching
+  - Matches if any array element equals the query value
+  - Works with primitive values and objects
+- [x] Array element position queries
+  - Supports positional access (e.g., `"array.0"`)
+  - Works with nested arrays
+- [x] Array of objects queries
+  - Supports querying by object fields (e.g., `"items.name"`)
+  - Matches if any array element has matching field
 
-### Storage and Performance
-1. Basic Index Support
-   - Support for single field and compound indexes
-   - Unique and sparse index options
-   - Limited to key-value store capabilities
-   - No index-based query optimization yet
-   - No advanced index types (text, geospatial, etc.)
-
-2. Transaction Limitations
-   - Single-document atomicity only
-   - No multi-document transactions
-   - No distributed transactions
-   - Limited isolation levels
-
-3. Size Limitations
-   - Document size limited by Deno KV value size limits
-   - Collection size limited by Deno KV storage capacity
-   - No automatic sharding or partitioning
-
-### Query and Update Limitations
-1. Query Operators
-   - No regex support in queries
-   - No geospatial operators
-   - No text search capabilities
-   - Limited `$type` operator functionality
-
-2. Update Operators
-   - No bitwise update operators
-   - Limited array positional operator support
-   - No JavaScript expression evaluation
-
-3. Projection Limitations
-   - No computed fields in projections
-   - No `$` positional projection operator
-   - No aggregation pipeline in projections
-
-### Feature Differences
-1. No Cursor API
-   - All results returned as arrays
-   - No streaming result support
-   - Memory limitations for large result sets
-
-2. No Change Streams
-   - No real-time update notifications
-   - No oplog or change tracking
-
-3. Authentication and Authorization
-   - No built-in user authentication
-   - No role-based access control
-   - Relies on Deno KV's security model
-
-4. Data Types
-   - Limited BSON type support
-   - No support for MongoDB-specific types (Decimal128, etc.)
-   - JavaScript Date used instead of MongoDB Date
-
-### Administrative Features
-1. No Administrative Commands
-   - No database commands
-   - No server statistics
-   - No profiling tools
-
-2. No Backup/Restore
-   - No native dump/restore tools
-   - Relies on Deno KV backup mechanisms
-
-3. No Replication
-   - No replica sets
-   - No automatic failover
-   - No secondary reads
-
-### Development Considerations
-1. Performance Optimization
-   - Careful query design needed
-   - Avoid large result sets
-   - Consider data denormalization
-
-2. Data Modeling
-   - Prefer flatter document structures
-   - Avoid deep nesting
-   - Consider KV-oriented design patterns
-
-3. Error Handling
-   - Different error codes and messages
-   - Simplified error classification
-   - No support for write concerns
+#### Array Comparison Semantics
+- [x] Array equality
+  - Exact array matching (length and element order)
+  - Element-by-element comparison
+- [x] Array contains
+  - Matches if array contains specified element
+  - Works with all comparison operators
+- [x] Array operator combinations
+  - Supports complex queries with multiple array operators
+  - Proper handling of nested arrays and objects

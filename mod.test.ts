@@ -1,5 +1,5 @@
 import { assertEquals, assertRejects, assert } from "jsr:@std/assert";
-import { Collection, ObjectId, Document } from "./kv.ts";
+import { Collection, ObjectId, Document } from "./mod.ts";
 
 interface BaseTestDoc extends Document {
   name: string;

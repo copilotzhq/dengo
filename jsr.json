@@ -1,0 +1,29 @@
+{
+  "name": "@copilotz/dengo",
+  "version": "0.1.0",
+  "exports": "mod.ts",
+  "unstable": ["kv"],
+  "fmt": {
+    "indentWidth": 2,
+    "singleQuote": false,
+    "semiColons": true
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "tasks": {
+    "test": "deno test --unstable-kv",
+    "check": "deno fmt --check && deno lint && deno check mod.ts",
+    "example:todo": "deno run --unstable-kv examples/todo-app/mod.ts"
+  },
+  "exclude": [
+    "examples/",
+    "benchmark/",
+    "docs/",
+    "MARKETING_PLAN.md",
+    "LAUNCH_ANNOUNCEMENTS.md",
+    "README_TEMPLATE.md"
+  ]
+}

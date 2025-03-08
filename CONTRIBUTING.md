@@ -1,125 +1,139 @@
 # Contributing to Dengo
 
-Thank you for your interest in contributing to Dengo! We aim to provide a MongoDB-like experience for Deno KV while maintaining type safety and zero dependencies.
+Thank you for considering contributing to Dengo! This document provides guidelines and instructions for contributing to the project.
 
-## Getting Started
+## 🌟 Ways to Contribute
 
-1. Fork and clone the repository
-2. Create a new branch for your feature/fix
-3. Install Deno if you haven't already (https://deno.land/manual/getting_started/installation)
+There are many ways to contribute to Dengo:
 
-## Development Guidelines
+1. **Code Contributions**: Implement new features or fix bugs
+2. **Documentation**: Improve or expand documentation
+3. **Examples**: Create example applications using Dengo
+4. **Testing**: Write tests or identify edge cases
+5. **Bug Reports**: Submit detailed bug reports
+6. **Feature Requests**: Suggest new features or improvements
+7. **Spread the Word**: Star the repository, share it with others
 
-### Type Safety
+## 🚀 Getting Started
 
-We prioritize type safety throughout the codebase. Look at existing type definitions in `kv.ts`:
+### Development Environment Setup
 
-```typescript
-interface FindOptions<T = Document> {
-  sort?: Record<string, SortDirection>;
-  limit?: number;
-  skip?: number;
-  projection?: Record<string, 0 | 1 | boolean>;
-}
+1. **Fork and Clone the Repository**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/dengo.git
+   cd dengo
+   ```
 
-type Filter<T = any> = {
-  [P in keyof T & string]?:
-  | T[P]
-  | ComparisonOperator<T[P]>
-  | ArrayOperator<T[P]>
-  | ElementOperator;
-} & LogicalOperator<T>;
-```
+2. **Run Tests**
+   ```bash
+   deno test --unstable-kv
+   ```
 
-### Testing
+3. **Run Examples**
+   ```bash
+   deno run --unstable-kv examples/todo-app/mod.ts
+   ```
 
-All new features should include tests. Look at existing tests in `kv.test.ts` for examples:
+## 📝 Pull Request Process
 
-```typescript
-Deno.test("Collection.find", async (t) => {
-  await t.step("basic query with empty filter", async () => {
-    const results = await collection.find({});
-    assertEquals(results.length, docs.length);
-  });
+1. **Create a Branch**
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
 
-  await t.step("pagination (skip and limit)", async () => {
-    const results = await collection.find({}, { skip: 2, limit: 2 });
-    assertEquals(results.length, 2);
-  });
-});
-```
+2. **Make Your Changes**
+   - Follow the coding style of the project
+   - Add or update tests as necessary
+   - Update documentation to reflect your changes
 
-Key testing principles:
-- Use descriptive test names
-- Test edge cases
-- Group related tests using `t.step()`
-- Clean up test data after each test
+3. **Run Tests**
+   ```bash
+   deno test --unstable-kv
+   ```
 
-### Code Style
+4. **Update MONGODB_COMPAT.md**
+   - If you've implemented or modified a feature, update the compatibility document
+   - Mark newly implemented features with [x]
+   - Document any limitations or differences from MongoDB
 
-- Use TypeScript features appropriately
-- Follow existing patterns in the codebase
-- Keep methods focused and well-named
+5. **Commit Your Changes**
+   ```bash
+   git commit -m "feat: add some feature"
+   ```
+   We follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.
+
+6. **Push to Your Fork**
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+7. **Submit a Pull Request**
+   - Fill in the pull request template
+   - Reference any related issues
+   - Describe your changes in detail
+
+## 📋 Code Style Guidelines
+
+- Use TypeScript for all code
+- Follow the existing code style
+- Use meaningful variable and function names
 - Add comments for complex logic
-- Use private methods for internal functionality
+- Keep functions small and focused
 
-### MongoDB Compatibility
+## 🐛 Reporting Bugs
 
-When implementing features:
-1. Match MongoDB's behavior where practical
-2. Document any differences in behavior
-3. Consider Deno KV's limitations
-4. Optimize for edge computing use cases
+When reporting bugs, please include:
 
-## Pull Request Process
+1. **Description**: Clear description of the bug
+2. **Steps to Reproduce**: Detailed steps to reproduce the issue
+3. **Expected Behavior**: What you expected to happen
+4. **Actual Behavior**: What actually happened
+5. **Environment**: Deno version, OS, etc.
+6. **Code Sample**: Minimal code sample that reproduces the issue
 
-1. Ensure your code is formatted:
-   ```bash
-   deno fmt
-   ```
+## 💡 Feature Requests
 
-2. Run tests:
-   ```bash
-   deno test
-   ```
+When suggesting features, please include:
 
-3. Include in your PR:
-   - Description of changes
-   - Test cases
-   - Any breaking changes
-   - Performance implications
+1. **Description**: Clear description of the feature
+2. **Use Case**: Why this feature would be useful
+3. **Proposed Implementation**: If you have ideas on how to implement it
+4. **MongoDB Compatibility**: How this relates to MongoDB's API
 
-## Running Examples
+## 🔍 Code Review Process
 
-```typescript
-// Basic usage
-import { Database } from "./mod.ts";
-const kv = await Deno.openKv();
-const db = new Database(kv);
+All submissions require review before being merged:
 
-// Create a typed collection
-interface User {
-  name: string;
-  email: string;
-  age: number;
-}
+1. At least one maintainer must approve the changes
+2. All tests must pass
+3. Documentation must be updated
+4. MONGODB_COMPAT.md must be updated if applicable
 
-const users = db.collection<User>("users");
+## 📊 Project Structure
 
-// Test your changes
-await users.insertOne({
-  name: "Test User",
-  email: "test@example.com",
-  age: 25
-});
+```
+dengo/
+├── mod.ts              # Main entry point
+├── MONGODB_COMPAT.md   # MongoDB compatibility documentation
+├── examples/           # Example applications
+│   ├── todo-app/       # Todo application example
+│   └── ...
+├── src/                # Source code
+│   ├── collection.ts   # Collection implementation
+│   ├── database.ts     # Database implementation
+│   ├── objectid.ts     # ObjectId implementation
+│   └── ...
+└── tests/              # Tests
+    ├── collection_test.ts
+    └── ...
 ```
 
-## Getting Help
+## 🙏 Thank You
 
-- Open an issue for bugs or feature requests
-- Ask questions in discussions
-- Join our Discord community
+Your contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-## License
+---
 
-By contributing, you agree that your contributions will be licensed under the MIT License. 
+<div align="center">
+  <sub>Happy coding! ❤️</sub>
+</div> 

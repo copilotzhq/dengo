@@ -1,5 +1,12 @@
 {
-    "tasks":{
-        "start": "deno run -A --unstable-kv kv.ts"
-    }
+  "name": "@copilotz/dengo",
+  "version": "0.1.0",
+  "exports": "./mod.ts",
+  "license": "MIT",
+  "tasks": {
+    "start": "deno run -A --unstable-kv mod.ts"
+  },
+  "imports": {
+    "bson": "npm:bson@6.10.2"
+  }
 }

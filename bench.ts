@@ -1,4 +1,4 @@
-import { Database, Document } from "./kv.ts";
+import { Database, Document } from "./mod.ts";
 
 // Test data interfaces
 interface User extends Document {
