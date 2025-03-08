@@ -6,7 +6,7 @@
   <p>The power of MongoDB queries with the simplicity of Deno's native KV store</p>
 
 [![JSR](https://jsr.io/badges/@copilotz/dengo)](https://jsr.io/@copilotz/dengo)
-[![GitHub stars](https://img.shields.io/github/stars/copiotzhq/dengo?style=social)](https://github.com/copilotzhq/dengo)
+[![GitHub stars](https://img.shields.io/github/stars/copilotzhq/dengo)](https://github.com/copilotzhq/dengo)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 </div>
