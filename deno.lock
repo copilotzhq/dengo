@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@std/assert@*": "1.0.11",
     "jsr:@std/internal@^1.0.5": "1.0.5",
+    "npm:@deno/kv@*": "0.9.0",
     "npm:bson@*": "6.10.2",
     "npm:bson@6.10.2": "6.10.2"
   },
@@ -18,6 +19,27 @@
     }
   },
   "npm": {
+    "@deno/kv-darwin-arm64@0.9.0": {
+      "integrity": "sha512-9o2typxowaiIW7TJFzbuDEIpmZA9/At+kO7ljgb+jEm16gBHtCkDt69TU4h0ZIMmHo7E9Mo+W84BeGdXkxUGcg=="
+    },
+    "@deno/kv-darwin-x64@0.9.0": {
+      "integrity": "sha512-LxCNbOO3INW5VkhLviRLvQoiJtiNlgSvPZM5JwVQhu4dWNpuMI7Hl2cU1PB3mOwuYHdORnkj5BqChQRdRh4F0g=="
+    },
+    "@deno/kv-linux-x64-gnu@0.9.0": {
+      "integrity": "sha512-DqhJdWD/mzb/WHHaL9QqsPZxuk/w1haWDnEOZ3rda704q/lJFkIBMBWBB8kDDbVphQ2WNVU0uKyAdxNYpUK8YQ=="
+    },
+    "@deno/kv-win32-x64-msvc@0.9.0": {
+      "integrity": "sha512-yDLd0OY/7nOoUG8WypEOLIME0ZADqgG7ciKiL7hOy06ra1gR9AaZeacsZ2Df2SxSnuuOVJpxUhml+JRVx+LGpg=="
+    },
+    "@deno/kv@0.9.0": {
+      "integrity": "sha512-NdnyNKpxH+Hjb/55v+qpLG39Tz/otlyl0FFaNCRcOtQfCmjRsJevoZugBR+d+O+/5PYmmj/fgfcpYgnukM1r5A==",
+      "dependencies": [
+        "@deno/kv-darwin-arm64",
+        "@deno/kv-darwin-x64",
+        "@deno/kv-linux-x64-gnu",
+        "@deno/kv-win32-x64-msvc"
+      ]
+    },
     "bson@6.10.2": {
       "integrity": "sha512-5afhLTjqDSA3akH56E+/2J6kTDuSIlBxyXPdQslj9hcIgOUE378xdOfZvC/9q3LifJNI6KR/juZ+d0NRNYBwXg=="
     }
