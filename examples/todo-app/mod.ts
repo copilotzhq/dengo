@@ -230,13 +230,17 @@ export async function getTodosByCategory(
   userId: string,
   category: string
 ): Promise<Todo[]> {
+  console.log(`Getting todos for user ${userId} and category ${category}`);
   const cursor = await todos.find({ userId, category });
   const results = await cursor.toArray();
+  console.log(`Found ${results.length} todos for category ${category}`);
   return results;
 }
 
 export async function getOverdueTodos(userId: string): Promise<Todo[]> {
+  console.log(`Getting overdue todos for user ${userId}`);
   const now = new Date();
+  console.log(`Current date: ${now.toISOString()}`);
   const cursor = await todos.find({
     userId,
     completed: false,
@@ -245,6 +249,7 @@ export async function getOverdueTodos(userId: string): Promise<Todo[]> {
     sort: { dueDate: 1 } // Sort by due date ascending (oldest first)
   });
   const results = await cursor.toArray();
+  console.log(`Found ${results.length} overdue todos`);
   return results;
 }
 
