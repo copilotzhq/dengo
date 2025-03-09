@@ -161,11 +161,11 @@ export async function listTodos(
     ];
   }
 
-  const docs = await todos.find(filter, { 
+  const cursor = await todos.find(filter, { 
     sort: { dueDate: 1, priority: -1 } 
   });
 
-  return docs;
+  return cursor.toArray();
 }
 
 export async function updateTodo(
@@ -230,18 +230,22 @@ export async function getTodosByCategory(
   userId: string,
   category: string
 ): Promise<Todo[]> {
-  return todos.find({ userId, category });
+  const cursor = await todos.find({ userId, category });
+  const results = await cursor.toArray();
+  return results;
 }
 
 export async function getOverdueTodos(userId: string): Promise<Todo[]> {
   const now = new Date();
-  return todos.find({
+  const cursor = await todos.find({
     userId,
     completed: false,
     dueDate: { $lt: now }
   }, {
     sort: { dueDate: 1 } // Sort by due date ascending (oldest first)
   });
+  const results = await cursor.toArray();
+  return results;
 }
 
 export async function getTodoStats(userId: string): Promise<{
@@ -251,7 +255,8 @@ export async function getTodoStats(userId: string): Promise<{
   highPriority: number;
   byCategory: Record<string, number>;
 }> {
-  const allTodos = await todos.find({ userId });
+  const cursor = await todos.find({ userId });
+  const allTodos = await cursor.toArray();
   const now = new Date();
   
   const stats = {

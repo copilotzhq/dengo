@@ -356,6 +356,226 @@ interface IndexInfo {
 }
 
 /**
+ * Utility functions for working with nested objects
+ */
+const utils = {
+  getNestedValue(obj: any, path: string): unknown {
+    if (!obj) return undefined;
+
+    return path.split(".").reduce((current, part) => {
+      if (current === undefined || current === null) return undefined;
+
+      if (Array.isArray(current)) {
+        // For array fields, return the array if we're accessing the array itself
+        // This is important for array operators like $all, $size, etc.
+        if (part === "$" || part === "") return current;
+
+        // For array fields with numeric index
+        if (/^\d+$/.test(part)) {
+          const index = parseInt(part, 10);
+          return index < current.length ? current[index] : undefined;
+        }
+
+        // For array of objects, collect all matching values
+        // This handles cases like: { "tags.0": "a" } or { "items.name": "foo" }
+        if (current.some((item) => item && typeof item === "object")) {
+          const values = current
+            .filter((item) => item && typeof item === "object")
+            .map((item) => item[part])
+            .filter((v) => v !== undefined);
+
+          return values.length ? values : undefined;
+        }
+
+        return undefined;
+      }
+
+      // Handle nested object access
+      return current && typeof current === "object" ? current[part] : undefined;
+    }, obj);
+  },
+
+  setNestedValue(obj: any, path: string, value: unknown): void {
+    const parts = path.split(".");
+    let current = obj;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!(part in current)) {
+        current[part] = {};
+      }
+      current = current[part];
+    }
+
+    const lastPart = parts[parts.length - 1];
+    current[lastPart] = value;
+  },
+
+  deleteNestedField(obj: any, path: string): void {
+    const parts = path.split(".");
+    let current = obj;
+
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!(part in current) || current[part] === null) {
+        return; // Field doesn't exist, nothing to delete
+      }
+      current = current[part];
+    }
+
+    delete current[parts[parts.length - 1]];
+  }
+};
+
+/**
+ * Cursor for iterating over query results.
+ * Provides MongoDB-compatible cursor interface.
+ */
+export class Cursor<T extends Document> {
+  private documents: WithId<T>[];
+
+  constructor(documents: WithId<T>[]) {
+    this.documents = documents;
+  }
+
+  /**
+   * Returns all the documents in the cursor as an array.
+   */
+  async toArray(): Promise<WithId<T>[]> {
+    return this.documents;
+  }
+
+  /**
+   * Returns the number of documents in the cursor.
+   */
+  async count(): Promise<number> {
+    return this.documents.length;
+  }
+
+  /**
+   * Makes the cursor iterable.
+   */
+  [Symbol.iterator](): Iterator<WithId<T>> {
+    return this.documents[Symbol.iterator]();
+  }
+
+  /**
+   * Returns the first document in the cursor, or null if the cursor is empty.
+   */
+  async next(): Promise<WithId<T> | null> {
+    return this.documents.length > 0 ? this.documents[0] : null;
+  }
+
+  /**
+   * Returns a new cursor with the specified limit.
+   */
+  limit(limit: number): Cursor<T> {
+    return new Cursor<T>(this.documents.slice(0, limit));
+  }
+
+  /**
+   * Returns a new cursor that skips the specified number of documents.
+   */
+  skip(skip: number): Cursor<T> {
+    return new Cursor<T>(this.documents.slice(skip));
+  }
+
+  /**
+   * Returns a new cursor with the specified sort order.
+   */
+  sort(sortOptions: Record<string, SortDirection>): Cursor<T> {
+    // Create a copy of the documents array to avoid modifying the original
+    const sortedDocs = [...this.documents];
+    
+    // Sort the documents based on the provided sort options
+    sortedDocs.sort((a, b) => {
+      for (const [field, direction] of Object.entries(sortOptions)) {
+        const aValue = utils.getNestedValue(a, field);
+        const bValue = utils.getNestedValue(b, field);
+        
+        if (aValue === bValue) continue;
+        
+        // Handle null/undefined values
+        if (aValue == null && bValue != null) return direction;
+        if (aValue != null && bValue == null) return -direction;
+        
+        // Compare values based on their types
+        if (aValue instanceof Date && bValue instanceof Date) {
+          return (aValue.getTime() - bValue.getTime()) * direction;
+        }
+        
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          return aValue.localeCompare(bValue) * direction;
+        }
+        
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return (aValue - bValue) * direction;
+        }
+        
+        // Default comparison for other types
+        return ((aValue as any) > (bValue as any) ? 1 : -1) * direction;
+      }
+      return 0;
+    });
+    
+    return new Cursor<T>(sortedDocs);
+  }
+
+  /**
+   * Returns a new cursor with the specified projection.
+   */
+  project(projection: Record<string, 0 | 1 | boolean>): Cursor<T> {
+    const projectedDocs = this.documents.map(doc => {
+      const result: any = { _id: doc._id };
+      const includeMode = this.isIncludeProjection(projection);
+      
+      if (includeMode) {
+        // Include only specified fields
+        for (const [field, include] of Object.entries(projection)) {
+          if (field === '_id') continue; // _id is always included unless explicitly excluded
+          if (include) {
+            const value = utils.getNestedValue(doc, field);
+            if (value !== undefined) {
+              utils.setNestedValue(result, field, value);
+            }
+          }
+        }
+      } else {
+        // Include all fields except those specified
+        Object.assign(result, doc);
+        for (const [field, exclude] of Object.entries(projection)) {
+          if (field !== '_id' || exclude) { // Only exclude _id if explicitly set to 0
+            utils.deleteNestedField(result, field);
+          }
+        }
+      }
+      
+      return result as WithId<T>;
+    });
+    
+    return new Cursor<T>(projectedDocs);
+  }
+
+  private isIncludeProjection(projection: Record<string, 0 | 1 | boolean>): boolean {
+    // Determine if this is an include (1) or exclude (0) projection
+    // MongoDB rule: can't mix include and exclude except for _id
+    let includeMode: boolean | null = null;
+    
+    for (const [field, value] of Object.entries(projection)) {
+      if (field === '_id') continue; // _id can be either included or excluded regardless
+      
+      if (includeMode === null) {
+        includeMode = Boolean(value);
+      } else if (Boolean(value) !== includeMode) {
+        throw new Error("Projection cannot have a mix of inclusion and exclusion.");
+      }
+    }
+    
+    return includeMode !== false; // Default to include mode if no fields specified besides _id
+  }
+}
+
+/**
  * Represents a collection of documents in the database.
  *
  * A collection is a group of documents that share a common structure,
@@ -382,7 +602,7 @@ class Collection<T extends Document> {
   // - deleteMany(filter: object)
 
   private getKvKey(id: ObjectId): KvKey {
-    return [this.collectionName, id.id] as const;
+    return [this.collectionName, id.toString()] as const;
   }
 
   private generateId(): ObjectId {
@@ -394,7 +614,19 @@ class Collection<T extends Document> {
   }
 
   private deserializeObjectId(id: string | Uint8Array): ObjectId {
-    return new ObjectId(typeof id === "string" ? id : id.toString());
+    return new ObjectId(id);
+  }
+
+  private getNestedValue(obj: any, path: string): unknown {
+    return utils.getNestedValue(obj, path);
+  }
+
+  private setNestedValue(obj: any, path: string, value: unknown): void {
+    utils.setNestedValue(obj, path, value);
+  }
+
+  private deleteNestedField(obj: any, path: string): void {
+    utils.deleteNestedField(obj, path);
   }
 
   private async checkIndexViolations(
@@ -425,7 +657,7 @@ class Collection<T extends Document> {
           for await (const existing of this.kv.list({ prefix })) {
             const existingId = (existing.value as any)._id;
             // Only throw if it's a different document
-            if (existingId !== doc._id) {
+            if (existingId && existingId !== doc._id.toString()) {
               throw new Error(`Duplicate key error: ${field}`);
             }
           }
@@ -473,10 +705,7 @@ class Collection<T extends Document> {
     // Update all indexes first
     const indexPrefix = ["__indexes__", this.collectionName] as const;
     for await (const entry of this.kv.list({ prefix: indexPrefix })) {
-      const indexInfo = entry.value as {
-        spec: IndexDefinition;
-        options: IndexOptions;
-      };
+      const indexInfo = entry.value as IndexInfo;
       await this.updateIndexEntry(
         { ...doc, _id } as Omit<T, "_id"> & { _id: ObjectId },
         indexInfo.spec,
@@ -585,22 +814,6 @@ class Collection<T extends Document> {
     }
 
     return result as WithId<T>;
-  }
-
-  private setNestedValue(obj: any, path: string, value: unknown): void {
-    const parts = path.split(".");
-    let current = obj;
-
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      if (!(part in current)) {
-        current[part] = {};
-      }
-      current = current[part];
-    }
-
-    const lastPart = parts[parts.length - 1];
-    current[lastPart] = value;
   }
 
   private isEqual(a: unknown, b: unknown): boolean {
@@ -860,7 +1073,8 @@ class Collection<T extends Document> {
       return doc;
     }
 
-    const results = await this.find(filter, { limit: 1, ...options });
+    const cursor = await this.find(filter, { limit: 1, ...options });
+    const results = await cursor.toArray();
     return results[0] || null;
   }
 
@@ -1120,16 +1334,19 @@ class Collection<T extends Document> {
   async find(
     filter: Filter<T>,
     options: FindOptions<T> = {},
-  ): Promise<WithId<T>[]> {
+  ): Promise<Cursor<T>> {
     // Check if we can use an index
     const usableIndex = await this.findUsableIndex(filter);
 
+    let results: WithId<T>[];
     if (usableIndex) {
-      return this.findUsingIndex(usableIndex, filter, options);
+      results = await this.findUsingIndex(usableIndex, filter, options);
+    } else {
+      // Fall back to full collection scan
+      results = await this.findWithoutIndex(filter, options);
     }
 
-    // Fall back to full collection scan
-    return this.findWithoutIndex(filter, options);
+    return new Cursor<T>(results);
   }
 
   // Rename the existing find implementation
@@ -1183,42 +1400,6 @@ class Collection<T extends Document> {
       }
       return 0;
     });
-  }
-
-  private getNestedValue(obj: any, path: string): unknown {
-    if (!obj) return undefined;
-
-    return path.split(".").reduce((current, part) => {
-      if (current === undefined || current === null) return undefined;
-
-      if (Array.isArray(current)) {
-        // For array fields, return the array if we're accessing the array itself
-        // This is important for array operators like $all, $size, etc.
-        if (part === "$" || part === "") return current;
-
-        // For array fields with numeric index
-        if (/^\d+$/.test(part)) {
-          const index = parseInt(part, 10);
-          return index < current.length ? current[index] : undefined;
-        }
-
-        // For array of objects, collect all matching values
-        // This handles cases like: { "tags.0": "a" } or { "items.name": "foo" }
-        if (current.some((item) => item && typeof item === "object")) {
-          const values = current
-            .filter((item) => item && typeof item === "object")
-            .map((item) => item[part])
-            .filter((v) => v !== undefined);
-
-          return values.length ? values : undefined;
-        }
-
-        return undefined;
-      }
-
-      // Handle nested object access
-      return current && typeof current === "object" ? current[part] : undefined;
-    }, obj);
   }
 
   /**
@@ -1421,12 +1602,14 @@ class Collection<T extends Document> {
     update: UpdateOperator<T>,
     options: UpdateOptions<T> = {},
   ): Promise<UpdateResult<T>> {
-    const docs = await this.find(filter);
-
+    const cursor = await this.find(filter);
+    const docs = await cursor.toArray();
+    
+    // Handle upsert if no documents match and upsert is true
     if (docs.length === 0 && options.upsert) {
       return this.updateOne(filter, update, options);
     }
-
+    
     let modifiedCount = 0;
     const writeErrors: { index: number; error: Error }[] = [];
 
@@ -1522,18 +1705,19 @@ class Collection<T extends Document> {
    * @returns A promise that resolves to a DeleteResult
    */
   async deleteMany(filter: Filter<T>): Promise<DeleteResult> {
-    const docs = await this.find(filter);
-
+    const cursor = await this.find(filter);
+    const docs = await cursor.toArray();
+    
     if (docs.length === 0) {
       return {
         acknowledged: true,
         deletedCount: 0,
       };
     }
-
+    
     let deletedCount = 0;
     const atomic = this.kv.atomic();
-
+    
     for (const doc of docs) {
       const key = this.getKvKey(doc._id);
       const currentEntry = await this.kv.get(key);
@@ -1541,15 +1725,16 @@ class Collection<T extends Document> {
         .check({ key, versionstamp: currentEntry.versionstamp })
         .delete(key);
     }
-
+    
+    // Execute the atomic operation
     const result = await atomic.commit();
-
+    
     if (!result.ok) {
       throw new Error(
         "Failed to delete documents - concurrent modification detected",
       );
     }
-
+    
     return {
       acknowledged: true,
       deletedCount: docs.length,
@@ -1560,30 +1745,23 @@ class Collection<T extends Document> {
     filter: Filter<T> = {},
     options: CountOptions = {},
   ): Promise<number> {
-    const { limit, skip = 0 } = options;
-
-    // If no filter and no options, use fast path with list prefix
-    if (Object.keys(filter).length === 0 && !limit && !skip) {
-      let count = 0;
-      const prefix = [this.collectionName];
-
-      for await (const entry of this.kv.list({ prefix })) {
-        count++;
-      }
-
-      return count;
+    // If we have a limit or skip, we need to apply those
+    if (options.limit !== undefined || options.skip !== undefined) {
+      const cursor = await this.find(filter);
+      const results = await cursor.toArray();
+      
+      const start = options.skip || 0;
+      const end = options.limit !== undefined
+        ? start + options.limit
+        : results.length;
+      
+      return Math.min(Math.max(0, results.length - start), end - start);
     }
 
-    // Otherwise, use find to apply filter
-    const docs = await this.find(filter);
-
-    // Apply skip and limit to the count
-    const startIndex = skip;
-    const endIndex = limit
-      ? Math.min(startIndex + limit, docs.length)
-      : docs.length;
-
-    return Math.max(0, endIndex - startIndex);
+    // Otherwise, just count all matching documents
+    const cursor = await this.find(filter);
+    const docs = await cursor.toArray();
+    return docs.length;
   }
 
   async estimatedDocumentCount(): Promise<number> {
@@ -1603,36 +1781,34 @@ class Collection<T extends Document> {
     filter: Filter<T> = {},
     options: DistinctOptions = {},
   ): Promise<unknown[]> {
-    if (!field) {
-      throw new Error("Field parameter required");
-    }
-
-    // Get filtered documents
-    const docs = await this.find(filter);
-
-    // Extract values from the specified field
-    const values = new Set<unknown>();
-
+    const cursor = await this.find(filter);
+    const docs = await cursor.toArray();
+    
+    // Extract values for the specified field
+    let allValues: unknown[] = [];
+    
     for (const doc of docs) {
       const value = this.getNestedValue(doc, field);
-
-      if (value === undefined) {
-        continue;
-      }
-
+      
+      if (value === undefined) continue;
+      
       if (Array.isArray(value)) {
-        // For array fields, add each unique element
-        value.forEach((item) => {
-          if (item !== undefined) {
-            values.add(this.normalizeValue(item));
-          }
-        });
+        // For array fields, add each element
+        allValues = allValues.concat(value);
       } else {
-        values.add(this.normalizeValue(value));
+        allValues.push(value);
       }
     }
-
-    return Array.from(values);
+    
+    // Deduplicate values
+    const distinctValues: unknown[] = [];
+    for (const value of allValues) {
+      if (!this.arrayIncludes(distinctValues, value)) {
+        distinctValues.push(this.normalizeValue(value));
+      }
+    }
+    
+    return distinctValues;
   }
 
   private normalizeValue(value: unknown): unknown {
@@ -1815,13 +1991,13 @@ class Collection<T extends Document> {
 
         for await (const entry of this.kv.list({ prefix })) {
           const existingId = (entry.value as any)._id;
-          if (existingId !== doc._id.toString()) {
+          if (existingId && existingId !== doc._id.toString()) {
             throw new Error(`Duplicate key error: ${field}`);
           }
         }
       }
 
-      // Store the index entry atomically
+      // Add the index entry
       await this.kv.atomic()
         .set(indexKey, { _id: doc._id.toString() })
         .commit();

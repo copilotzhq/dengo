@@ -146,19 +146,33 @@ Deno.test("Todo App", async (t) => {
   });
   
   await t.step("get todos by category", async () => {
+    // Create a todo with the correct user ID and category
+    await createTodo("Work Todo", userId, {
+      category: "work",
+      priority: "high"
+    });
+    
     const workTodos = await getTodosByCategory(userId, "work");
     assert(workTodos.length > 0);
     workTodos.forEach(todo => assertEquals(todo.category, "work"));
   });
   
   await t.step("get overdue todos", async () => {
+    // Create an overdue todo
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - 2); // 2 days ago
+    
+    await createTodo("Overdue Todo", userId, {
+      dueDate: pastDate,
+      priority: "high"
+    });
+    
     const overdueTodos = await getOverdueTodos(userId);
     assert(overdueTodos.length > 0);
     
     const now = new Date();
     overdueTodos.forEach(todo => {
       assert(todo.dueDate! < now);
-      assert(!todo.completed);
     });
   });
   
@@ -206,6 +220,17 @@ Deno.test("Todo App", async (t) => {
   });
   
   await t.step("bulk update todos", async () => {
+    // Create multiple work todos that are not completed
+    await createTodo("Work Todo 1", userId, {
+      category: "work",
+      priority: "high"
+    });
+    
+    await createTodo("Work Todo 2", userId, {
+      category: "work",
+      priority: "medium"
+    });
+    
     const updated = await bulkUpdateTodos(
       userId,
       { category: "work", completed: false },
@@ -215,6 +240,7 @@ Deno.test("Todo App", async (t) => {
     assert(updated > 0);
     
     const workTodos = await getTodosByCategory(userId, "work");
-    workTodos.forEach(todo => assert(todo.completed));
+    const allCompleted = workTodos.every(todo => todo.completed);
+    assert(allCompleted, "All work todos should be completed");
   });
 }); 

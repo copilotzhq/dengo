@@ -113,11 +113,9 @@ test-results/
 examples/**/data/
 examples/**/.kv/
 
-# Marketing materials (keep these in a separate branch or directory)
-MARKETING_PLAN.md
-LAUNCH_ANNOUNCEMENTS.md 
-
 .cursor/rules
 .cursorrules
 .cursorrules.txt
+
+private/
 

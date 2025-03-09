@@ -1,7 +1,7 @@
 # Dengo
 
 <div align="center">
-  <img src="dengo_logo.png" alt="Dengo Logo" width="200"/>
+  <img src="images/dengo_logo.png" alt="Dengo Logo" width="200"/>
   <h3>MongoDB-compatible API for Deno KV</h3>
   <p>The power of MongoDB queries with the simplicity of Deno's native KV store</p>
 
