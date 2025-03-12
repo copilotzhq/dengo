@@ -880,7 +880,7 @@ class Collection<T extends Document> {
       Array.isArray(value) && !Array.isArray(condition) &&
       !(condition && typeof condition === "object" &&
         ("$all" in condition || "$size" in condition ||
-          "$elemMatch" in condition))
+          "$elemMatch" in condition || "$nin" in condition))
     ) {
       return value.some((item) => this.matchesCondition(item, condition));
     }
@@ -923,6 +923,12 @@ class Collection<T extends Document> {
               return Array.isArray(val) &&
                 val.some((v) => this.isEqual(value, v));
             case "$nin":
+              // For array values, $nin should only match if none of the array elements match any of the values
+              if (Array.isArray(value)) {
+                return Array.isArray(val) &&
+                  !value.some(item => val.some(v => this.isEqual(item, v)));
+              }
+              // For non-array values, $nin should match if the value is not in the array
               return Array.isArray(val) &&
                 !val.some((v) => this.isEqual(value, v));
             case "$exists":
@@ -940,6 +946,10 @@ class Collection<T extends Document> {
                 if (typeof val !== "object") return this.isEqual(item, val);
                 return this.matchesCondition(item, val);
               });
+            case "$not":
+              // $not negates the result of the nested condition
+              if (typeof val !== "object") return !this.isEqual(value, val);
+              return !this.matchesCondition(value, val);
             case "$type":
               const type = typeof value;
               if (val === "null") return value === null;
@@ -1549,6 +1559,21 @@ class Collection<T extends Document> {
         if (Array.isArray(array)) {
           const filtered = array.filter((item) => !this.isEqual(item, value));
           this.setNestedValue(result, path, filtered);
+        }
+      });
+    }
+
+    // Handle $addToSet
+    if (update.$addToSet) {
+      Object.entries(update.$addToSet).forEach(([path, value]) => {
+        let array = this.getNestedValue(result, path) as unknown[];
+        if (!Array.isArray(array)) {
+          array = [];
+          this.setNestedValue(result, path, array);
+        }
+        // Only add the value if it doesn't already exist in the array
+        if (!array.some(item => this.isEqual(item, value))) {
+          array.push(value);
         }
       });
     }

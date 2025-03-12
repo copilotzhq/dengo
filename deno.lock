@@ -44,6 +44,9 @@
       "integrity": "sha512-5afhLTjqDSA3akH56E+/2J6kTDuSIlBxyXPdQslj9hcIgOUE378xdOfZvC/9q3LifJNI6KR/juZ+d0NRNYBwXg=="
     }
   },
+  "remote": {
+    "https://deno.land/std@0.214.0/fmt/colors.ts": "aeaee795471b56fc62a3cb2e174ed33e91551b535f44677f6320336aabb54fbb"
+  },
   "workspace": {
     "dependencies": [
       "npm:bson@6.10.2"
