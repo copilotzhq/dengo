@@ -20,7 +20,7 @@
 - **Indexing**: Create indexes for faster queries and unique constraints
 - **Serverless Ready**: Perfect for Deno Deploy and edge functions
 - **Comprehensive**: Support for find, update, delete, and aggregation
-  operations
+- **Local Development**: Helpful for local development, as a plug-in replacement for mongodb-driver with in-memory db for testing and development purposes
 
 ## 📦 Installation
 
