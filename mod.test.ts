@@ -153,7 +153,6 @@ Deno.test("Collection.insertOne", async (t) => {
     assertEquals(inserted?.nested, largeDoc.nested);
     assertEquals(inserted?.array, largeDoc.array);
   });
-
 });
 
 Deno.test("Collection.insertMany", async (t) => {
@@ -436,7 +435,8 @@ Deno.test("Collection.find", async (t) => {
     { _id: new ObjectId(), name: "Jane", age: 25, tags: ["b", "c"], nested: { x: 2 } },
     { _id: new ObjectId(), name: "Bob", age: 35, tags: ["a", "c"], nested: { x: 3 } },
     { _id: new ObjectId(), name: "Alice", age: 28, tags: ["b", "d"], nested: { x: 4 } },
-    { _id: new ObjectId(), name: "Charlie", age: 32, tags: ["c", "d"], nested: { x: 5 } }
+    { _id: new ObjectId(), name: "Charlie", age: 32, tags: ["c", "d"], nested: { x: 5 } },
+    { _id: new ObjectId(), name: "Charlie", age: 32, tags: ["e", "f"], nested: { x: 6 } }
   ];
   await collection.insertMany(docs);
 
@@ -451,23 +451,23 @@ Deno.test("Collection.find", async (t) => {
     const resultsArray = await results.toArray();
     assertEquals(resultsArray.length, 2);
     // Ensure consistent ordering with sort
-    const sortedResults = await collection.find({}, { sort: { name: 1 }, skip: 2, limit: 2 });
+    const sortedResults = await collection.find({}, { sort: { name: 1 }, skip: 2, limit: 3 });
     const sortedResultsArray = await sortedResults.toArray();
-    assertEquals(sortedResultsArray.map(d => d.name), ["Charlie", "Jane"]);
+    assertEquals(sortedResultsArray.map(d => d.name), ["Charlie", "Charlie", "Jane"]);
   });
 
   await t.step("sorting (single field and multiple fields)", async () => {
     // Single field sort
     const singleSort = await collection.find({}, { sort: { age: 1 } });
     const singleSortArray = await singleSort.toArray();
-    assertEquals(singleSortArray.map(d => d.name), ["Jane", "Alice", "John", "Charlie", "Bob"]);
+    assertEquals(singleSortArray.map(d => d.name), ["Jane", "Alice", "John", "Charlie", "Charlie", "Bob"]);
 
     // Multiple field sort
     const multiSort = await collection.find({}, { 
       sort: { age: -1, name: 1 } 
     });
     const multiSortArray = await multiSort.toArray();
-    assertEquals(multiSortArray.map(d => d.name), ["Bob", "Charlie", "John", "Alice", "Jane"]);
+    assertEquals(multiSortArray.map(d => d.name), ["Bob", "Charlie", "Charlie", "John", "Alice", "Jane"]);
   });
 
   await t.step("complex filters with multiple operators", async () => {
@@ -499,7 +499,7 @@ Deno.test("Collection.find", async (t) => {
   await t.step("nested field queries", async () => {
     const results = await collection.find({ "nested.x": { $gt: 3 } });
     const resultsArray = await results.toArray();
-    assertEquals(resultsArray.length, 2);
+    assertEquals(resultsArray.length, 3);
     assert(resultsArray.every(doc => 
       doc.nested && doc.nested.x > 3
     ));
