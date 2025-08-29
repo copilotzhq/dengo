@@ -1057,7 +1057,8 @@ Deno.test("Collection.deleteMany", async (t) => {
       { _id: new ObjectId(), name: "John", age: 30, status: "active", tags: ["a", "b"] },
       { _id: new ObjectId(), name: "Jane", age: 25, status: "active", tags: ["b", "c"] },
       { _id: new ObjectId(), name: "Bob", age: 35, status: "inactive", tags: ["a", "c"] },
-      { _id: new ObjectId(), name: "Alice", age: 28, status: "active", tags: ["b", "d"] }
+      { _id: new ObjectId(), name: "Alice", age: 28, status: "active", tags: ["b", "d"] },
+      { _id: new ObjectId(), name: "Alice", age: 28, status: "active", tags: ["e", "f"] }
     ];
     await collection.insertMany(docs);
     return docs;
@@ -1067,7 +1068,7 @@ Deno.test("Collection.deleteMany", async (t) => {
     const docs = await resetCollection();
     const result = await collection.deleteMany({ status: "active" });
     assertEquals(result.acknowledged, true);
-    assertEquals(result.deletedCount, 3);
+    assertEquals(result.deletedCount, 4);
 
     const remaining = await collection.countDocuments({});
     assertEquals(remaining, 1);
@@ -1091,7 +1092,7 @@ Deno.test("Collection.deleteMany", async (t) => {
   await t.step("delete all documents", async () => {
     await resetCollection();
     const result = await collection.deleteMany({});
-    assertEquals(result.deletedCount, 4);
+    assertEquals(result.deletedCount, 5);
 
     const remaining = await collection.countDocuments({});
     assertEquals(remaining, 0);
@@ -1103,7 +1104,7 @@ Deno.test("Collection.deleteMany", async (t) => {
     assertEquals(result.deletedCount, 0);
 
     const remaining = await collection.countDocuments({});
-    assertEquals(remaining, 4);
+    assertEquals(remaining, 5);
   });
 
   await t.step("transaction atomicity", async () => {
@@ -1124,7 +1125,7 @@ Deno.test("Collection.deleteMany", async (t) => {
 
     // All documents should still exist
     const remaining = await collection.countDocuments({});
-    assertEquals(remaining, 4);
+    assertEquals(remaining, 5);
   });
 
   await t.step("delete count accuracy", async () => {
@@ -1132,7 +1133,7 @@ Deno.test("Collection.deleteMany", async (t) => {
     
     // Delete in multiple operations and verify counts
     const result1 = await collection.deleteMany({ status: "active" });
-    assertEquals(result1.deletedCount, 3);
+    assertEquals(result1.deletedCount, 4);
     
     const result2 = await collection.deleteMany({ status: "inactive" });
     assertEquals(result2.deletedCount, 1);
