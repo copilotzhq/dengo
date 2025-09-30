@@ -2148,17 +2148,7 @@ class Collection<T extends Document> {
     results: WithId<T>[],
     options: FindOptions<T>,
   ): WithId<T>[] {
-    // Deduplicate by field values first
-    const uniqueResults = Array.from(
-      new Map(
-        results.map((doc) => [
-          JSON.stringify([doc.name, doc.email, doc.age, doc.status]),
-          doc,
-        ]),
-      ).values(),
-    );
-
-    let processed = uniqueResults;
+    let processed = results;
 
     if (options.sort) {
       processed = this.sortDocuments(processed, options.sort);

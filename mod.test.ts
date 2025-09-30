@@ -153,7 +153,6 @@ Deno.test("Collection.insertOne", async (t) => {
     assertEquals(inserted?.nested, largeDoc.nested);
     assertEquals(inserted?.array, largeDoc.array);
   });
-
 });
 
 Deno.test("Collection.insertMany", async (t) => {
@@ -436,7 +435,8 @@ Deno.test("Collection.find", async (t) => {
     { _id: new ObjectId(), name: "Jane", age: 25, tags: ["b", "c"], nested: { x: 2 } },
     { _id: new ObjectId(), name: "Bob", age: 35, tags: ["a", "c"], nested: { x: 3 } },
     { _id: new ObjectId(), name: "Alice", age: 28, tags: ["b", "d"], nested: { x: 4 } },
-    { _id: new ObjectId(), name: "Charlie", age: 32, tags: ["c", "d"], nested: { x: 5 } }
+    { _id: new ObjectId(), name: "Charlie", age: 32, tags: ["c", "d"], nested: { x: 5 } },
+    { _id: new ObjectId(), name: "Charlie", age: 32, tags: ["e", "f"], nested: { x: 6 } }
   ];
   await collection.insertMany(docs);
 
@@ -451,23 +451,23 @@ Deno.test("Collection.find", async (t) => {
     const resultsArray = await results.toArray();
     assertEquals(resultsArray.length, 2);
     // Ensure consistent ordering with sort
-    const sortedResults = await collection.find({}, { sort: { name: 1 }, skip: 2, limit: 2 });
+    const sortedResults = await collection.find({}, { sort: { name: 1 }, skip: 2, limit: 3 });
     const sortedResultsArray = await sortedResults.toArray();
-    assertEquals(sortedResultsArray.map(d => d.name), ["Charlie", "Jane"]);
+    assertEquals(sortedResultsArray.map(d => d.name), ["Charlie", "Charlie", "Jane"]);
   });
 
   await t.step("sorting (single field and multiple fields)", async () => {
     // Single field sort
     const singleSort = await collection.find({}, { sort: { age: 1 } });
     const singleSortArray = await singleSort.toArray();
-    assertEquals(singleSortArray.map(d => d.name), ["Jane", "Alice", "John", "Charlie", "Bob"]);
+    assertEquals(singleSortArray.map(d => d.name), ["Jane", "Alice", "John", "Charlie", "Charlie", "Bob"]);
 
     // Multiple field sort
     const multiSort = await collection.find({}, { 
       sort: { age: -1, name: 1 } 
     });
     const multiSortArray = await multiSort.toArray();
-    assertEquals(multiSortArray.map(d => d.name), ["Bob", "Charlie", "John", "Alice", "Jane"]);
+    assertEquals(multiSortArray.map(d => d.name), ["Bob", "Charlie", "Charlie", "John", "Alice", "Jane"]);
   });
 
   await t.step("complex filters with multiple operators", async () => {
@@ -499,7 +499,7 @@ Deno.test("Collection.find", async (t) => {
   await t.step("nested field queries", async () => {
     const results = await collection.find({ "nested.x": { $gt: 3 } });
     const resultsArray = await results.toArray();
-    assertEquals(resultsArray.length, 2);
+    assertEquals(resultsArray.length, 3);
     assert(resultsArray.every(doc => 
       doc.nested && doc.nested.x > 3
     ));
@@ -1057,7 +1057,8 @@ Deno.test("Collection.deleteMany", async (t) => {
       { _id: new ObjectId(), name: "John", age: 30, status: "active", tags: ["a", "b"] },
       { _id: new ObjectId(), name: "Jane", age: 25, status: "active", tags: ["b", "c"] },
       { _id: new ObjectId(), name: "Bob", age: 35, status: "inactive", tags: ["a", "c"] },
-      { _id: new ObjectId(), name: "Alice", age: 28, status: "active", tags: ["b", "d"] }
+      { _id: new ObjectId(), name: "Alice", age: 28, status: "active", tags: ["b", "d"] },
+      { _id: new ObjectId(), name: "Alice", age: 28, status: "active", tags: ["e", "f"] }
     ];
     await collection.insertMany(docs);
     return docs;
@@ -1067,7 +1068,7 @@ Deno.test("Collection.deleteMany", async (t) => {
     const docs = await resetCollection();
     const result = await collection.deleteMany({ status: "active" });
     assertEquals(result.acknowledged, true);
-    assertEquals(result.deletedCount, 3);
+    assertEquals(result.deletedCount, 4);
 
     const remaining = await collection.countDocuments({});
     assertEquals(remaining, 1);
@@ -1091,7 +1092,7 @@ Deno.test("Collection.deleteMany", async (t) => {
   await t.step("delete all documents", async () => {
     await resetCollection();
     const result = await collection.deleteMany({});
-    assertEquals(result.deletedCount, 4);
+    assertEquals(result.deletedCount, 5);
 
     const remaining = await collection.countDocuments({});
     assertEquals(remaining, 0);
@@ -1103,7 +1104,7 @@ Deno.test("Collection.deleteMany", async (t) => {
     assertEquals(result.deletedCount, 0);
 
     const remaining = await collection.countDocuments({});
-    assertEquals(remaining, 4);
+    assertEquals(remaining, 5);
   });
 
   await t.step("transaction atomicity", async () => {
@@ -1124,7 +1125,7 @@ Deno.test("Collection.deleteMany", async (t) => {
 
     // All documents should still exist
     const remaining = await collection.countDocuments({});
-    assertEquals(remaining, 4);
+    assertEquals(remaining, 5);
   });
 
   await t.step("delete count accuracy", async () => {
@@ -1132,7 +1133,7 @@ Deno.test("Collection.deleteMany", async (t) => {
     
     // Delete in multiple operations and verify counts
     const result1 = await collection.deleteMany({ status: "active" });
-    assertEquals(result1.deletedCount, 3);
+    assertEquals(result1.deletedCount, 4);
     
     const result2 = await collection.deleteMany({ status: "inactive" });
     assertEquals(result2.deletedCount, 1);
